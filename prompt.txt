@@ -1,0 +1,452 @@
+Actúa como un Staff Software Engineer especializado en arquitecturas enterprise modernas con Next.js, React, Node.js, Prisma y PostgreSQL.
+
+Tu tarea es desarrollar un proyecto profesional, modular, escalable y mantenible llamado Capital 21 Play, una plataforma privada de distribución de contenido multimedia para el Servicio de Medios Públicos de la Ciudad de México - Capital 21.
+
+NO generes ejemplos simplificados.
+NO generes código estilo tutorial.
+TODO debe verse como un producto enterprise profesional listo para producción.
+
+Debes seguir estrictamente todas las instrucciones técnicas y arquitectónicas definidas a continuación.
+
+1. CONTEXTO GENERAL DEL PROYECTO
+
+El proyecto se llama:
+
+Capital 21 Play
+
+La plataforma servirá para compartir contenido multimedia digital entre televisoras con convenio institucional.
+
+La plataforma debe soportar:
+
+Series con múltiples temporadas
+Episodios
+Películas
+Programas completos
+Streaming privado
+Descarga de contenido
+Asignación dinámica de permisos
+Gestión avanzada de usuarios
+Carga masiva de contenido multimedia
+
+El sistema debe verse moderno, elegante, minimalista y corporativo.
+
+La UI debe inspirarse visual y estructuralmente en el siguiente repositorio:
+
+next-shadcn-admin-dashboard
+
+Debes analizar el patrón arquitectónico y visual de ese proyecto y replicar:
+
+Organización de componentes
+Filosofía de diseño
+Estructura visual de dashboards
+Reutilización de componentes
+Arquitectura UI
+Separación de responsabilidades
+Sistema de temas
+Componentes base reutilizables
+Layouts profesionales
+Tablas avanzadas
+Sidebars
+Topbars
+Cards
+Dialogs
+Dropdowns
+Command palette
+Data tables
+Skeleton loaders
+Toasts
+Empty states
+Sheets
+Modals
+Tabs
+Forms reutilizables
+2. STACK TECNOLÓGICO OBLIGATORIO
+
+TODO el proyecto debe desarrollarse usando:
+
+Frontend
+Next.js (App Router)
+React
+TypeScript
+TailwindCSS
+Shadcn/UI
+Radix UI
+TanStack Table
+React Hook Form
+Zod
+Zustand
+Axios
+next-themes
+Framer Motion
+Backend
+Node.js
+Express.js
+Prisma ORM
+PostgreSQL
+JWT Authentication
+Multer
+FFmpeg
+Bcrypt
+Infraestructura
+Arquitectura separada frontend/backend
+API REST
+Variables de entorno
+Manejo profesional de errores
+Logs
+Middleware desacoplado
+Servicios desacoplados
+Workers para procesamiento multimedia
+3. ESTRUCTURA OBLIGATORIA DEL PROYECTO
+
+Debes respetar EXACTAMENTE esta arquitectura:
+
+capital21play/
+│
+├── frontend/
+│   ├── app/
+│   │   ├── login/
+│   │   ├── dashboards/
+│   │   ├── components/
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   │
+│   ├── components/
+│   ├── lib/
+│   ├── hooks/
+│   ├── services/
+│   ├── store/
+│   ├── types/
+│   ├── utils/
+│   ├── public/
+│   └── .env
+│
+├── backend/
+│   ├── prisma/
+│   │   ├── schema.prisma
+│   │   └── seed.ts
+│   │
+│   ├── src/
+│   │   ├── config/
+│   │   ├── middleware/
+│   │   ├── routes/
+│   │   ├── controllers/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   ├── workers/
+│   │   ├── storage/
+│   │   ├── types/
+│   │   └── index.ts
+│   │
+│   └── .env
+│
+└── README.md
+4. ARQUITECTURA FRONTEND
+El frontend debe usar:
+Arquitectura modular
+Componentes desacoplados
+Server Components cuando sea apropiado
+Client Components solo cuando sea necesario
+Lazy loading
+Dynamic imports
+Suspense
+Loading states
+Error boundaries
+Skeleton loaders
+Layouts reutilizables
+5. SISTEMA DE UI Y COMPONENTES
+MUY IMPORTANTE
+
+Debes crear una carpeta:
+
+frontend/components/ui/
+
+Esta carpeta será el núcleo visual completo del proyecto.
+
+Debes construirla siguiendo exactamente la filosofía del repo:
+
+next-shadcn-admin-dashboard
+
+6. COMPONENTES REUTILIZABLES OBLIGATORIOS
+
+Debes generar componentes reutilizables desacoplados y completamente tipados.
+
+Componentes base:
+ui/
+├── button.tsx
+├── input.tsx
+├── textarea.tsx
+├── select.tsx
+├── dialog.tsx
+├── dropdown-menu.tsx
+├── card.tsx
+├── badge.tsx
+├── table.tsx
+├── data-table.tsx
+├── tabs.tsx
+├── sheet.tsx
+├── skeleton.tsx
+├── toast.tsx
+├── sonner.tsx
+├── form.tsx
+├── checkbox.tsx
+├── switch.tsx
+├── avatar.tsx
+├── sidebar.tsx
+├── navbar.tsx
+├── breadcrumb.tsx
+├── pagination.tsx
+├── command.tsx
+├── tooltip.tsx
+├── popover.tsx
+├── separator.tsx
+├── scroll-area.tsx
+├── loading.tsx
+├── empty-state.tsx
+├── theme-toggle.tsx
+└── media-player.tsx
+7. DISEÑO VISUAL
+
+La UI debe verse:
+
+Minimalista
+Moderna
+Corporativa
+Oscura profesional
+Elegante
+Muy limpia
+Altamente responsive
+
+Inspiración visual:
+
+Vercel
+Linear
+Notion
+Shadcn Dashboard
+next-shadcn-admin-dashboard
+8. SISTEMA DE TEMAS
+
+Debes implementar:
+
+Dark mode
+Light mode
+Persistencia del tema
+Cambio instantáneo de tema
+Variables CSS centralizadas
+next-themes
+
+El botón de cambio de tema debe funcionar en TODO el sistema.
+
+9. ROLES DEL SISTEMA
+
+Debes implementar exactamente 3 roles:
+
+ADMIN
+CONTENT_MANAGER
+BROADCASTER_VIEWER
+10. DASHBOARD ADMIN
+Funcionalidades:
+Crear usuarios
+Editar usuarios
+Eliminar usuarios
+Asignar roles
+Ver estadísticas generales
+Widgets:
+Almacenamiento disponible
+Número de series
+Número de temporadas
+Número de episodios
+Número de usuarios
+Tabla de usuarios
+Actividad reciente
+Componentes:
+Data tables avanzadas
+Modales
+Formularios validados
+Confirm dialogs
+11. DASHBOARD CONTENT MANAGER
+Funcionalidades:
+Crear series
+Crear temporadas
+Crear episodios
+Subir películas
+Subir programas completos
+Carga masiva multimedia
+Gestión dinámica de permisos
+Asignar acceso a broadcaster viewers
+Debe soportar:
+Upload múltiple
+Drag and drop
+Barra de progreso
+Reintentos
+Cancelación de subida
+Previsualización multimedia
+Gestión de permisos:
+
+Debe permitir:
+
+Asignar acceso por episodio
+Asignar acceso por temporada
+Asignar acceso por serie completa
+Revocar permisos dinámicamente
+12. DASHBOARD BROADCASTER VIEWER
+Funcionalidades:
+Ver contenido asignado
+Streaming privado
+Descarga individual
+Descarga de temporadas completas
+Descarga de series completas
+UI requerida:
+Grid de contenido multimedia
+Cards modernas
+Filtros
+Buscador
+Categorías
+Reproductor integrado
+13. MEDIA PLAYER
+
+Debes crear un componente:
+
+media-player.tsx
+
+Este componente será compartido por TODOS los dashboards.
+
+Debe soportar:
+
+Streaming HLS
+MP4
+Controles personalizados
+Fullscreen
+Calidad dinámica
+Preview thumbnails
+Responsive
+Dark mode
+Protección básica contra descarga directa
+
+Usa:
+
+video.js o react-player
+Tailwind
+TypeScript
+14. BACKEND
+
+El backend debe ser enterprise-grade.
+
+Arquitectura:
+Controllers
+Services
+Routes
+Middleware
+Utils
+Workers
+15. BASE DE DATOS
+
+Usa Prisma + PostgreSQL.
+
+Modelos obligatorios:
+User
+Role
+Series
+Season
+Episode
+Movie
+Program
+Permission
+Upload
+ActivityLog
+16. SISTEMA DE PERMISOS
+
+El sistema debe permitir:
+
+Permisos dinámicos
+Acceso granular
+Acceso por:
+episodio
+temporada
+serie
+película
+programa
+17. UPLOAD MULTIMEDIA
+
+Debes implementar:
+
+Upload chunked
+Upload masivo
+Procesamiento async
+Workers
+FFmpeg
+Generación de thumbnails
+Conversión HLS
+Metadata extraction
+18. SEGURIDAD
+
+Implementa:
+
+JWT Auth
+Refresh Tokens
+Password hashing
+Helmet
+Rate limiting
+CORS
+Validaciones Zod
+Middleware de autorización por rol
+Middleware de permisos dinámicos
+19. ESTILO DE CÓDIGO
+
+TODO el código debe ser:
+
+Escalable
+Modular
+Tipado
+Limpio
+Profesional
+Desacoplado
+Reutilizable
+Con buenas prácticas SOLID
+
+NO generes código monolítico.
+
+20. OBJETIVO FINAL
+
+El resultado debe sentirse como:
+
+Una plataforma OTT privada profesional
+Un sistema enterprise moderno
+Un dashboard corporativo premium
+Un producto listo para producción
+
+NO generes explicaciones largas.
+
+GENERA:
+
+Arquitectura
+Código
+Componentes
+Estructura
+Tipos
+Hooks
+Servicios
+Layouts
+Schemas Prisma
+APIs
+Middlewares
+UI reutilizable
+Dashboards completos
+
+TODO debe ser consistente visual y técnicamente.
+
+Comienza generando:
+
+La arquitectura completa
+El setup inicial
+La estructura del frontend
+La estructura del backend
+El sistema de UI reutilizable
+El layout principal
+El sistema de autenticación
+Los schemas Prisma
+El dashboard Admin
+El dashboard Content Manager
+El dashboard Broadcaster Viewer
+
+Y después continúa con el resto del sistema siguiendo exactamente esta dirección técnica.
