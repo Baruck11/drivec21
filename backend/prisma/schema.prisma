@@ -1,0 +1,342 @@
+// Capital 21 Play - Prisma Schema
+// PostgreSQL + Enterprise-grade data model
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  CONTENT_MANAGER
+  BROADCASTER_VIEWER
+}
+
+enum ContentType {
+  SERIES
+  SEASON
+  EPISODE
+  MOVIE
+  PROGRAM
+}
+
+enum UploadStatus {
+  PENDING
+  PROCESSING
+  TRANSCODING
+  GENERATING_THUMBNAILS
+  COMPLETED
+  FAILED
+}
+
+enum PermissionLevel {
+  EPISODE
+  SEASON
+  SERIES
+  MOVIE
+  PROGRAM
+}
+
+enum ActivityAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  UPLOAD
+  DOWNLOAD
+  STREAM
+  PERMISSION_GRANTED
+  PERMISSION_REVOKED
+}
+
+// ─────────────────────────────────────────
+// USER & AUTH
+// ─────────────────────────────────────────
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  username       String   @unique
+  passwordHash   String
+  displayName    String
+  avatarUrl      String?
+  role           Role     @default(BROADCASTER_VIEWER)
+  isActive       Boolean  @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  refreshTokens  RefreshToken[]
+  permissions    ContentPermission[]
+  activityLogs   ActivityLog[]
+  uploads        Upload[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  revokedAt  DateTime?
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────
+// CONTENT
+// ─────────────────────────────────────────
+
+model Series {
+  id           String   @id @default(cuid())
+  title        String
+  slug         String   @unique
+  description  String?
+  synopsis     String?
+  genre        String[]
+  tags         String[]
+  thumbnailUrl String?
+  bannerUrl    String?
+  year         Int?
+  isPublished  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  seasons      Season[]
+  permissions  ContentPermission[]
+  activityLogs ActivityLog[]
+
+  @@index([slug])
+  @@index([isPublished])
+  @@map("series")
+}
+
+model Season {
+  id           String   @id @default(cuid())
+  seriesId     String
+  number       Int
+  title        String
+  description  String?
+  thumbnailUrl String?
+  year         Int?
+  isPublished  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  series       Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episodes     Episode[]
+  permissions  ContentPermission[]
+
+  @@unique([seriesId, number])
+  @@index([seriesId])
+  @@map("seasons")
+}
+
+model Episode {
+  id             String    @id @default(cuid())
+  seasonId       String
+  number         Int
+  title          String
+  description    String?
+  duration       Int?
+  thumbnailUrl   String?
+  videoUrl       String?
+  hlsUrl         String?
+  downloadUrl    String?
+  fileSize       BigInt?
+  resolution     String?
+  codec          String?
+  bitrate        Int?
+  isPublished    Boolean   @default(false)
+  uploadStatus   UploadStatus @default(PENDING)
+  uploadId       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  season         Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  upload         Upload?   @relation(fields: [uploadId], references: [id])
+  permissions    ContentPermission[]
+
+  @@unique([seasonId, number])
+  @@index([seasonId])
+  @@index([uploadStatus])
+  @@map("episodes")
+}
+
+model Movie {
+  id             String    @id @default(cuid())
+  title          String
+  slug           String    @unique
+  description    String?
+  synopsis       String?
+  genre          String[]
+  tags           String[]
+  director       String?
+  duration       Int?
+  year           Int?
+  thumbnailUrl   String?
+  bannerUrl      String?
+  videoUrl       String?
+  hlsUrl         String?
+  downloadUrl    String?
+  fileSize       BigInt?
+  resolution     String?
+  codec          String?
+  bitrate        Int?
+  isPublished    Boolean   @default(false)
+  uploadStatus   UploadStatus @default(PENDING)
+  uploadId       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  upload         Upload?   @relation(fields: [uploadId], references: [id])
+  permissions    ContentPermission[]
+  activityLogs   ActivityLog[]
+
+  @@index([slug])
+  @@index([isPublished])
+  @@map("movies")
+}
+
+model Program {
+  id             String    @id @default(cuid())
+  title          String
+  slug           String    @unique
+  description    String?
+  synopsis       String?
+  category       String?
+  tags           String[]
+  broadcastDate  DateTime?
+  duration       Int?
+  thumbnailUrl   String?
+  videoUrl       String?
+  hlsUrl         String?
+  downloadUrl    String?
+  fileSize       BigInt?
+  resolution     String?
+  isPublished    Boolean   @default(false)
+  uploadStatus   UploadStatus @default(PENDING)
+  uploadId       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  upload         Upload?   @relation(fields: [uploadId], references: [id])
+  permissions    ContentPermission[]
+  activityLogs   ActivityLog[]
+
+  @@index([slug])
+  @@index([isPublished])
+  @@map("programs")
+}
+
+// ─────────────────────────────────────────
+// PERMISSIONS
+// ─────────────────────────────────────────
+
+model ContentPermission {
+  id              String          @id @default(cuid())
+  userId          String
+  contentType     ContentType
+  permissionLevel PermissionLevel
+  seriesId        String?
+  seasonId        String?
+  episodeId       String?
+  movieId         String?
+  programId       String?
+  canStream       Boolean         @default(true)
+  canDownload     Boolean         @default(false)
+  expiresAt       DateTime?
+  grantedAt       DateTime        @default(now())
+  grantedById     String?
+  revokedAt       DateTime?
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series          Series?         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  season          Season?         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  episode         Episode?        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  movie           Movie?          @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  program         Program?        @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([contentType])
+  @@index([seriesId])
+  @@index([seasonId])
+  @@index([episodeId])
+  @@map("content_permissions")
+}
+
+// ─────────────────────────────────────────
+// UPLOADS
+// ─────────────────────────────────────────
+
+model Upload {
+  id             String       @id @default(cuid())
+  uploadedById   String
+  originalName   String
+  storedName     String
+  mimeType       String
+  fileSize       BigInt
+  storagePath    String
+  status         UploadStatus @default(PENDING)
+  progress       Int          @default(0)
+  errorMessage   String?
+  metadata       Json?
+  processedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  uploadedBy     User         @relation(fields: [uploadedById], references: [id])
+  episodes       Episode[]
+  movies         Movie[]
+  programs       Program[]
+
+  @@index([uploadedById])
+  @@index([status])
+  @@map("uploads")
+}
+
+// ─────────────────────────────────────────
+// ACTIVITY LOG
+// ─────────────────────────────────────────
+
+model ActivityLog {
+  id          String         @id @default(cuid())
+  userId      String
+  action      ActivityAction
+  entityType  ContentType?
+  seriesId    String?
+  movieId     String?
+  programId   String?
+  description String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime       @default(now())
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series      Series?        @relation(fields: [seriesId], references: [id])
+  movie       Movie?         @relation(fields: [movieId], references: [id])
+  program     Program?       @relation(fields: [programId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_logs")
+}

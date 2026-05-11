@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+dist/
+build/
+
+# Environment variables (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Storage (video files, HLS segments, thumbnails — too large for git)
+backend/storage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Prisma generated (can be regenerated with prisma generate)
+# keep schema.prisma and migrations, exclude generated client if desired
+
+# Editor
+.vscode/
+.idea/
