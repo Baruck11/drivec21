@@ -2,15 +2,6 @@
 
 import { useEffect, useRef } from 'react'
 
-const ORBS = [
-  { ox: 0.12, oy: 0.40, r: 780, rgb: [130, 20, 255] as [number, number, number], speed: 0.00035, phase: 0.0 },
-  { ox: 0.78, oy: 0.60, r: 650, rgb: [0, 195, 145]  as [number, number, number], speed: 0.00028, phase: 1.6 },
-  { ox: 0.48, oy: 0.12, r: 600, rgb: [15, 80, 255]  as [number, number, number], speed: 0.00045, phase: 3.1 },
-  { ox: 0.88, oy: 0.22, r: 440, rgb: [210, 50, 175]  as [number, number, number], speed: 0.00038, phase: 0.9 },
-  { ox: 0.22, oy: 0.80, r: 520, rgb: [0, 130, 220]   as [number, number, number], speed: 0.00030, phase: 2.3 },
-  { ox: 0.60, oy: 0.45, r: 350, rgb: [255, 140, 0]   as [number, number, number], speed: 0.00022, phase: 4.0 },
-]
-
 export function AuroraBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -21,7 +12,7 @@ export function AuroraBackground() {
     if (!ctx) return
 
     let raf: number
-    let tick = 0
+    let startTime: number | null = null
 
     const resize = () => {
       canvas.width  = window.innerWidth
@@ -30,34 +21,94 @@ export function AuroraBackground() {
     resize()
     window.addEventListener('resize', resize)
 
-    const draw = () => {
-      tick++
+    // Smooth wave path via quadratic bezier
+    const buildPoints = (W: number, H: number, t: number): [number, number][] => {
+      const N = 90
+      const baseY   = H * 0.52
+      const amp     = H * 0.19
+      const breathe = 1 + 0.11 * Math.sin(t * 0.31)
+      const pts: [number, number][] = []
+      for (let i = 0; i <= N; i++) {
+        const nx = i / N
+        const x  = nx * W
+        // Three harmonics — different speeds/phases for organic, non-mechanical motion
+        const y  = baseY + amp * breathe * (
+          0.50 * Math.sin(nx * 2.5 * Math.PI + t * 0.40) +
+          0.30 * Math.sin(nx * 5.2 * Math.PI - t * 0.25 + 1.3) +
+          0.20 * Math.sin(nx * 9.0 * Math.PI + t * 0.15 + 2.8)
+        )
+        pts.push([x, y])
+      }
+      return pts
+    }
+
+    const tracePath = (pts: [number, number][]) => {
+      ctx.beginPath()
+      ctx.moveTo(pts[0][0], pts[0][1])
+      for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i][0] + pts[i + 1][0]) / 2
+        const my = (pts[i][1] + pts[i + 1][1]) / 2
+        ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my)
+      }
+      ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1])
+    }
+
+    const pass = (
+      pts: [number, number][],
+      width: number,
+      style: string | CanvasGradient,
+      alpha: number,
+      blur: number,
+      shadowCol: string,
+    ) => {
+      ctx.save()
+      tracePath(pts)
+      ctx.strokeStyle   = style
+      ctx.lineWidth     = width
+      ctx.lineCap       = 'round'
+      ctx.lineJoin      = 'round'
+      ctx.globalAlpha   = alpha
+      ctx.shadowBlur    = blur
+      ctx.shadowColor   = shadowCol
+      ctx.stroke()
+      ctx.restore()
+    }
+
+    const draw = (ts: number) => {
+      if (startTime === null) startTime = ts
+      const t = (ts - startTime) / 1000
+
       const { width: W, height: H } = canvas
 
-      ctx.fillStyle = '#06060f'
+      // Deep black background
+      ctx.fillStyle = '#050505'
       ctx.fillRect(0, 0, W, H)
 
-      ctx.globalCompositeOperation = 'screen'
+      const pts = buildPoints(W, H, t)
 
-      for (const o of ORBS) {
-        const x = (o.ox + Math.sin(tick * o.speed + o.phase) * 0.22) * W
-        const y = (o.oy + Math.cos(tick * o.speed * 0.68 + o.phase) * 0.18) * H
-        const g = ctx.createRadialGradient(x, y, 0, x, y, o.r)
-        const [r, gr, b] = o.rgb
-        g.addColorStop(0,    `rgba(${r},${gr},${b},0.28)`)
-        g.addColorStop(0.45, `rgba(${r},${gr},${b},0.10)`)
-        g.addColorStop(1,    `rgba(${r},${gr},${b},0)`)
-        ctx.fillStyle = g
-        ctx.beginPath()
-        ctx.arc(x, y, o.r, 0, Math.PI * 2)
-        ctx.fill()
-      }
+      // Horizontal gradient — emerald → electric green → aqua → cyan
+      const grad = ctx.createLinearGradient(0, 0, W, 0)
+      grad.addColorStop(0,    '#00c853')
+      grad.addColorStop(0.33, '#00ff88')
+      grad.addColorStop(0.66, '#00ffcc')
+      grad.addColorStop(1,    '#00e5ff')
 
-      ctx.globalCompositeOperation = 'source-over'
+      // ── 5 glow layers, outside-in ─────────────────────────────────────────
+      // 1. Volumetric outer halo
+      pass(pts, 110, 'rgba(0,255,136,0.04)', 1, 90,  '#00ff88')
+      // 2. Mid-range glow
+      pass(pts,  45, 'rgba(0,255,200,0.10)', 1, 50,  '#00ffcc')
+      // 3. Inner atmospheric glow
+      pass(pts,  14, grad,                   0.55, 28, '#00ffcc')
+      // 4. Sharp core line
+      pass(pts,   2.5, grad,                 0.92, 14, '#00ffee')
+      // 5. Ultra-bright specular highlight
+      pass(pts,   0.9, 'rgba(220,255,240,0.80)', 1, 7, '#ffffff')
+
       raf = requestAnimationFrame(draw)
     }
 
-    draw()
+    raf = requestAnimationFrame(draw)
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
@@ -65,26 +116,11 @@ export function AuroraBackground() {
   }, [])
 
   return (
-    <>
-      {/* Animated gradient orbs */}
-      <canvas
-        ref={canvasRef}
-        aria-hidden
-        className="fixed inset-0 pointer-events-none"
-        style={{ zIndex: 0 }}
-      />
-      {/* Grid overlay */}
-      <div
-        aria-hidden
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          zIndex: 1,
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),' +
-            'linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
-          backgroundSize: '60px 60px',
-        }}
-      />
-    </>
+    <canvas
+      ref={canvasRef}
+      aria-hidden
+      className="fixed inset-0 pointer-events-none"
+      style={{ zIndex: 0 }}
+    />
   )
 }

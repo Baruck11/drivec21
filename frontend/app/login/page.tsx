@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Eye, EyeOff, Play, Loader2, ArrowLeft } from 'lucide-react'
+import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import Image from 'next/image'
 
 import { useAuthStore } from '@/store/auth.store'
 import { Button } from '@/components/ui/button'
@@ -45,7 +46,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-[#06060f] text-white overflow-hidden flex items-center justify-center">
+    <div className="relative min-h-screen bg-[#050505] text-white overflow-hidden flex items-center justify-center">
       <AuroraBackground />
 
       {/* Back to home */}
@@ -70,12 +71,16 @@ export default function LoginPage() {
           <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl">
 
             {/* Logo */}
-            <div className="flex items-center gap-2.5 mb-8">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-600">
-                <Play className="h-4 w-4 text-white fill-white" />
-              </div>
+            <div className="flex items-center gap-3 mb-8">
+              <Image
+                src="/logc21.png"
+                alt="Capital 21"
+                width={120}
+                height={36}
+                className="h-8 w-auto object-contain"
+                priority
+              />
               <div>
-                <p className="text-sm font-semibold text-white leading-none">Capital 21 Play</p>
                 <p className="text-[11px] text-white/40 mt-0.5">Medios Públicos · CDMX</p>
               </div>
             </div>
@@ -104,7 +109,7 @@ export default function LoginPage() {
                           type="email"
                           placeholder="usuario@capital21.mx"
                           autoComplete="email"
-                          className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-purple-500/40 focus-visible:border-white/20"
+                          className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-emerald-500/40 focus-visible:border-white/20"
                           {...field}
                         />
                       </FormControl>
@@ -127,7 +132,7 @@ export default function LoginPage() {
                             type={showPassword ? 'text' : 'password'}
                             placeholder="••••••••"
                             autoComplete="current-password"
-                            className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-purple-500/40 focus-visible:border-white/20 pr-10"
+                            className="bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-emerald-500/40 focus-visible:border-white/20 pr-10"
                             {...field}
                           />
                           <button
@@ -147,7 +152,8 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full mt-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white border-0 shadow-lg shadow-purple-900/30 font-medium"
+                  className="w-full mt-2 text-black border-0 shadow-lg shadow-emerald-900/40 font-semibold"
+                  style={{ background: 'linear-gradient(135deg, #00c853, #00e5ff)' }}
                 >
                   {isLoading ? (
                     <>

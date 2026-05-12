@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   ArrowRight,
   Shield,
@@ -10,83 +10,9 @@ import {
   Upload,
   BarChart3,
   Lock,
-  Play,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-
-// ─── Aurora canvas ─────────────────────────────────────────────────────────────
-
-function AuroraBackground() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    let raf: number
-    let tick = 0
-
-    const orbs = [
-      { ox: 0.12, oy: 0.40, r: 780, rgb: [130, 20, 255] as [number,number,number], speed: 0.00035, phase: 0.0 },
-      { ox: 0.78, oy: 0.60, r: 650, rgb: [0,  195, 145] as [number,number,number], speed: 0.00028, phase: 1.6 },
-      { ox: 0.48, oy: 0.12, r: 600, rgb: [15,  80, 255] as [number,number,number], speed: 0.00045, phase: 3.1 },
-      { ox: 0.88, oy: 0.22, r: 440, rgb: [210, 50, 175] as [number,number,number], speed: 0.00038, phase: 0.9 },
-      { ox: 0.22, oy: 0.80, r: 520, rgb: [0,  130, 220] as [number,number,number], speed: 0.00030, phase: 2.3 },
-      { ox: 0.60, oy: 0.45, r: 350, rgb: [255, 140, 0]  as [number,number,number], speed: 0.00022, phase: 4.0 },
-    ]
-
-    const resize = () => {
-      canvas.width  = window.innerWidth
-      canvas.height = window.innerHeight
-    }
-    resize()
-    window.addEventListener('resize', resize)
-
-    const draw = () => {
-      tick++
-      const { width: W, height: H } = canvas
-
-      ctx.fillStyle = '#06060f'
-      ctx.fillRect(0, 0, W, H)
-
-      ctx.globalCompositeOperation = 'screen'
-
-      for (const o of orbs) {
-        const x = (o.ox + Math.sin(tick * o.speed + o.phase) * 0.22) * W
-        const y = (o.oy + Math.cos(tick * o.speed * 0.68 + o.phase) * 0.18) * H
-        const g = ctx.createRadialGradient(x, y, 0, x, y, o.r)
-        const [r, gr, b] = o.rgb
-        g.addColorStop(0,   `rgba(${r},${gr},${b},0.28)`)
-        g.addColorStop(0.45,`rgba(${r},${gr},${b},0.10)`)
-        g.addColorStop(1,   `rgba(${r},${gr},${b},0)`)
-        ctx.fillStyle = g
-        ctx.beginPath()
-        ctx.arc(x, y, o.r, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      ctx.globalCompositeOperation = 'source-over'
-      raf = requestAnimationFrame(draw)
-    }
-
-    draw()
-    return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener('resize', resize)
-    }
-  }, [])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className="fixed inset-0 pointer-events-none"
-      style={{ zIndex: 0 }}
-    />
-  )
-}
+import { AuroraBackground } from '@/components/ui/aurora-background'
 
 // ─── Features ──────────────────────────────────────────────────────────────────
 
@@ -133,21 +59,8 @@ const FEATURES = [
 
 export default function HomePage() {
   return (
-    <div className="relative min-h-screen bg-[#06060f] text-white overflow-x-hidden">
+    <div className="relative min-h-screen bg-[#050505] text-white overflow-x-hidden">
       <AuroraBackground />
-
-      {/* Subtle grid overlay */}
-      <div
-        aria-hidden
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          zIndex: 1,
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), ' +
-            'linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
-          backgroundSize: '60px 60px',
-        }}
-      />
 
       {/* All content above canvas */}
       <div className="relative" style={{ zIndex: 2 }}>
@@ -156,11 +69,15 @@ export default function HomePage() {
         <header className="fixed top-0 inset-x-0 z-50">
           <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
             {/* Logo */}
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-600">
-                <Play className="h-4 w-4 text-white fill-white" />
-              </div>
-              <span className="text-sm font-semibold tracking-wide">Capital 21 Play</span>
+            <div className="flex items-center gap-3">
+              <Image
+                src="/logc21.png"
+                alt="Capital 21"
+                width={120}
+                height={36}
+                className="h-8 w-auto object-contain"
+                priority
+              />
             </div>
 
             {/* Nav links + CTA */}
@@ -201,7 +118,7 @@ export default function HomePage() {
               className="inline-block"
               style={{
                 backgroundImage:
-                  'linear-gradient(135deg, #a855f7 0%, #3b82f6 40%, #06b6d4 75%, #10b981 100%)',
+                  'linear-gradient(135deg, #00c853 0%, #00ff88 35%, #00ffcc 65%, #00e5ff 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -224,7 +141,10 @@ export default function HomePage() {
             <Button
               asChild
               size="lg"
-              className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white border-0 shadow-lg shadow-purple-900/30"
+              className="gap-2 border-0 text-black font-semibold shadow-lg shadow-emerald-900/40"
+              style={{
+                background: 'linear-gradient(135deg, #00c853, #00e5ff)',
+              }}
             >
               <Link href="/login">
                 Acceder a la plataforma
@@ -250,7 +170,7 @@ export default function HomePage() {
               { value: '3 roles', label: 'Control de acceso' },
               { value: '5 GB', label: 'Archivos por video' },
             ].map(({ value, label }) => (
-              <div key={label} className="bg-black/30 backdrop-blur-sm px-6 py-5">
+              <div key={label} className="bg-black/40 backdrop-blur-sm px-6 py-5">
                 <div className="text-xl font-bold text-white">{value}</div>
                 <div className="mt-0.5 text-xs text-white/45">{label}</div>
               </div>
@@ -280,12 +200,11 @@ export default function HomePage() {
             {FEATURES.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="group relative rounded-2xl border border-white/8 bg-white/3 p-6 backdrop-blur-sm transition-all duration-300 hover:border-white/15 hover:bg-white/6"
+                className="group relative rounded-2xl border border-white/8 bg-white/3 p-6 backdrop-blur-sm transition-all duration-300 hover:border-emerald-500/20 hover:bg-white/6"
               >
-                {/* Hover glow */}
                 <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
                   style={{
-                    background: 'radial-gradient(400px circle at var(--mouse-x,50%) var(--mouse-y,50%), rgba(139,92,246,0.08), transparent 70%)',
+                    background: 'radial-gradient(400px circle at 50% 50%, rgba(0,255,136,0.07), transparent 70%)',
                   }}
                 />
                 <div className="relative">
@@ -302,7 +221,7 @@ export default function HomePage() {
 
         {/* ── CTA banner ── */}
         <section className="px-6 pb-32">
-          <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-gradient-to-br from-purple-900/30 via-blue-900/20 to-emerald-900/20 p-12 text-center backdrop-blur-sm">
+          <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-900/25 via-teal-900/15 to-cyan-900/20 p-12 text-center backdrop-blur-sm">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
               Listo para empezar
             </h2>
@@ -326,10 +245,13 @@ export default function HomePage() {
         <footer className="border-t border-white/8 px-6 py-8">
           <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-white/30">
             <div className="flex items-center gap-2">
-              <div className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-purple-500 to-blue-600">
-                <Play className="h-2.5 w-2.5 text-white fill-white" />
-              </div>
-              <span>Capital 21 Play</span>
+              <Image
+                src="/logc21.png"
+                alt="Capital 21"
+                width={64}
+                height={20}
+                className="h-5 w-auto object-contain opacity-50"
+              />
             </div>
             <span>Servicio de Medios Públicos · Ciudad de México · {new Date().getFullYear()}</span>
             <Link href="/login" className="hover:text-white/60 transition-colors">
