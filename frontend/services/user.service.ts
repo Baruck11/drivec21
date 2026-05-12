@@ -22,6 +22,7 @@ export interface UserQueryParams {
   search?: string
   sortBy?: string
   sortOrder?: 'asc' | 'desc'
+  role?: string
 }
 
 export const userService = {
