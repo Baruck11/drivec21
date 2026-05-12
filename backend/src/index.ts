@@ -13,6 +13,11 @@ import { connectDatabase, disconnectDatabase } from './config/database'
 import { globalErrorHandler, notFoundHandler } from './middleware/error.middleware'
 import routes from './routes'
 
+// BigInt fields (e.g. fileSize) are not JSON-serializable by default.
+;(BigInt.prototype as unknown as Record<string, unknown>).toJSON = function () {
+  return Number(this)
+}
+
 const app = express()
 
 // ── Security ───────────────────────────────────────────────────────────────────
