@@ -130,7 +130,7 @@ export default function HomePage() {
           </h1>
 
           {/* Subtitle */}
-          <p className="mt-7 max-w-2xl text-base text-white/55 leading-relaxed sm:text-lg">
+          <p className="mt-7 max-w-2xl text-base text-white/65 leading-relaxed sm:text-lg rounded-2xl border border-white/8 bg-black/40 px-7 py-4 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             Plataforma privada de gestión y distribución de video para el Servicio de Medios Públicos
             de la Ciudad de México. Sube, transcodifica, organiza y distribuye series, películas y
             programas a televisoras distribuidoras con control granular de permisos.
