@@ -4,14 +4,15 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   Shield, Play, ChevronDown, ChevronUp, Tv, Film, Video,
   Search, UserCheck, UserX, Loader2, Check, X as XIcon,
+  Download, Archive, Layers, AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { permissionService } from '@/services/permission.service'
 import { userService } from '@/services/user.service'
 import { contentService } from '@/services/content.service'
-import { toStorageUrl } from '@/services/download.service'
-import { formatDuration } from '@/lib/utils'
+import { downloadService, toStorageUrl } from '@/services/download.service'
+import { formatDuration, formatBytes } from '@/lib/utils'
 import type { ContentPermission, ContentType, User, Series, Season, Episode, Movie, Program } from '@/types'
 
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,9 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from '@/components/ui/sheet'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -334,12 +338,41 @@ function PermissionSheet({ target, users, onClose }: PermissionSheetProps) {
 
 interface EpRowProps {
   episode: Episode
+  seasonId: string
+  seasonTitle: string
+  seriesId: string
+  seriesTitle: string
   onPlay: (ep: Episode) => void
   onPerms: (ep: Episode) => void
 }
 
-function EpisodeRow({ episode, onPlay, onPerms }: EpRowProps) {
-  const ready = episode.uploadStatus === 'COMPLETED'
+function EpisodeRow({ episode, seasonId, seasonTitle, seriesId, seriesTitle, onPlay, onPerms }: EpRowProps) {
+  const [dlPending, setDlPending] = useState<'episode' | 'season' | 'series' | null>(null)
+  const ready    = episode.uploadStatus === 'COMPLETED'
+  const canPlay  = ready && !!(episode.hlsUrl ?? episode.videoUrl)
+  const canDl    = ready && !!episode.videoUrl
+
+  const handleDownloadEpisode = () => {
+    if (!episode.videoUrl) return
+    const filename = `${seriesTitle} - ${seasonTitle} - ${episode.title}.mp4`
+    downloadService.downloadFile(episode.videoUrl, filename)
+  }
+
+  const handleDownloadZip = async (type: 'season' | 'series') => {
+    const id    = type === 'season' ? seasonId : seriesId
+    const label = type === 'season' ? seasonTitle : seriesTitle
+    setDlPending(type)
+    toast.info(`Preparando ZIP de ${type === 'season' ? 'temporada' : 'serie'}…`)
+    try {
+      await downloadService.downloadZip(type, id, label)
+      toast.success('Descarga iniciada')
+    } catch {
+      toast.error('Error al generar el ZIP')
+    } finally {
+      setDlPending(null)
+    }
+  }
+
   return (
     <div className="flex items-center gap-3 px-3 py-2 hover:bg-muted/40 transition-colors rounded-md">
       <span className="text-xs font-mono text-muted-foreground w-6 shrink-0 text-right">
@@ -352,16 +385,58 @@ function EpisodeRow({ episode, onPlay, onPerms }: EpRowProps) {
             <span className="text-xs text-muted-foreground">{formatDuration(episode.duration)}</span>
           )}
           {!ready && (
-            <Badge variant="outline" className="text-xs h-4 px-1">{episode.uploadStatus === 'FAILED' ? 'Error' : 'Procesando'}</Badge>
+            <Badge variant="outline" className="text-xs h-4 px-1">
+              {episode.uploadStatus === 'FAILED' ? 'Error' : 'Procesando'}
+            </Badge>
           )}
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        {ready && (episode.hlsUrl ?? episode.videoUrl) && (
-          <Button size="sm" variant="secondary" className="h-7 gap-1 text-xs" onClick={() => onPlay(episode)}>
-            <Play className="h-3 w-3 fill-current" /> Ver
-          </Button>
-        )}
+        {/* Play */}
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-7 gap-1 text-xs"
+          disabled={!canPlay}
+          onClick={() => canPlay && onPlay(episode)}
+        >
+          <Play className="h-3 w-3 fill-current" /> Ver
+        </Button>
+
+        {/* Download dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              disabled={!canDl || !!dlPending}
+            >
+              {dlPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Download className="h-3 w-3" />
+              )}
+              Bajar
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="text-sm">
+            <DropdownMenuItem onClick={handleDownloadEpisode}>
+              <Layers className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+              Descargar episodio
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDownloadZip('season')}>
+              <Archive className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+              Descargar temporada (ZIP)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDownloadZip('series')}>
+              <Archive className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+              Descargar serie (ZIP)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Permissions */}
         <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => onPerms(episode)}>
           <Shield className="h-3 w-3" /> Permisos
         </Button>
@@ -374,12 +449,14 @@ function EpisodeRow({ episode, onPlay, onPerms }: EpRowProps) {
 
 interface SeasonRowProps {
   season: Season
+  seriesId: string
+  seriesTitle: string
   onPerms: (season: Season) => void
   onPlayEpisode: (ep: Episode) => void
   onEpisodePerms: (ep: Episode) => void
 }
 
-function SeasonRow({ season, onPerms, onPlayEpisode, onEpisodePerms }: SeasonRowProps) {
+function SeasonRow({ season, seriesId, seriesTitle, onPerms, onPlayEpisode, onEpisodePerms }: SeasonRowProps) {
   const [expanded, setExpanded] = useState(false)
   const [episodes, setEpisodes] = useState<Episode[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -436,6 +513,10 @@ function SeasonRow({ season, onPerms, onPlayEpisode, onEpisodePerms }: SeasonRow
               <EpisodeRow
                 key={ep.id}
                 episode={ep}
+                seasonId={season.id}
+                seasonTitle={season.title}
+                seriesId={seriesId}
+                seriesTitle={seriesTitle}
                 onPlay={onPlayEpisode}
                 onPerms={onEpisodePerms}
               />
@@ -530,6 +611,8 @@ function SeriesCard({ series, onPerms, onPlayEpisode, onSeasonPerms, onEpisodePe
               <SeasonRow
                 key={season.id}
                 season={season}
+                seriesId={series.id}
+                seriesTitle={series.title}
                 onPerms={(s) => onSeasonPerms(s, series.title)}
                 onPlayEpisode={(ep) => onPlayEpisode(ep, series.title)}
                 onEpisodePerms={(ep) => onEpisodePerms(ep, series.title)}
