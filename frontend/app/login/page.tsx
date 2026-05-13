@@ -49,6 +49,13 @@ export default function LoginPage() {
     <div className="relative min-h-screen bg-[#050505] text-white overflow-hidden flex items-center justify-center">
       <AuroraBackground />
 
+      {/* Full-background blur filter */}
+      <div
+        aria-hidden
+        className="fixed inset-0 pointer-events-none"
+        style={{ zIndex: 1, backdropFilter: 'blur(10px)' }}
+      />
+
       {/* Back to home */}
       <div className="fixed top-6 left-6 z-50">
         <Link
