@@ -116,11 +116,26 @@ export function AuroraBackground() {
   }, [])
 
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className="fixed inset-0 pointer-events-none"
-      style={{ zIndex: 0 }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        className="fixed inset-0 pointer-events-none"
+        style={{ zIndex: 0 }}
+      />
+      {/* 30% edge bevel — darkens the outer 30% on all sides */}
+      <div
+        aria-hidden
+        className="fixed inset-0 pointer-events-none"
+        style={{
+          zIndex: 0,
+          background: `radial-gradient(ellipse 80% 80% at 50% 50%,
+            transparent 40%,
+            rgba(5,5,5,0.55) 70%,
+            rgba(5,5,5,0.85) 85%,
+            #050505 100%)`,
+        }}
+      />
+    </>
   )
 }
