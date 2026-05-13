@@ -62,6 +62,13 @@ export default function HomePage() {
     <div className="relative min-h-screen bg-[#050505] text-white overflow-x-hidden">
       <AuroraBackground />
 
+      {/* Full-background blur filter */}
+      <div
+        aria-hidden
+        className="fixed inset-0 pointer-events-none"
+        style={{ zIndex: 1, backdropFilter: 'blur(10px)' }}
+      />
+
       {/* All content above canvas */}
       <div className="relative" style={{ zIndex: 2 }}>
 
