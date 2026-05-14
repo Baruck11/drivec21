@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import path from 'path'
 import fs from 'fs'
-import archiver = require('archiver')
+import archiver from 'archiver'
 import { authenticate } from '../middleware/auth.middleware'
 import { prisma } from '../config/database'
 import { sendError } from '../utils/apiResponse'
