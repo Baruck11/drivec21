@@ -617,6 +617,45 @@ const seriesFormSchema = z.object({
   year:        z.number().int().min(1900).max(2100).optional(),
 })
 
+// Defined at module level so React never remounts it on parent re-renders
+function SeriesFields({ f }: { f: ReturnType<typeof useForm<SeriesForm>> }) {
+  return (
+    <div className="grid gap-4 py-4">
+      <FormField control={f.control} name="title" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Título *</FormLabel>
+          <FormControl><Input placeholder="Título de la serie" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={f.control} name="description" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Descripción</FormLabel>
+          <FormControl><Textarea placeholder="Descripción breve..." rows={3} {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={f.control} name="synopsis" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Sinopsis</FormLabel>
+          <FormControl><Textarea placeholder="Sinopsis completa..." rows={4} {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={f.control} name="year" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Año</FormLabel>
+          <FormControl>
+            <Input type="number" placeholder="2024" {...field}
+              onChange={e => field.onChange(toInt(e.target.value))} />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+    </div>
+  )
+}
+
 export default function SeriesPage() {
   const [allSeries, setAllSeries]   = useState<Series[]>([])
   const [isLoading, setIsLoading]   = useState(true)
@@ -692,43 +731,6 @@ export default function SeriesPage() {
     } catch { toast.error('Error al eliminar la serie') }
     finally { setIsSubmitting(false) }
   }
-
-  // Series form fields shared between create/edit
-  const SeriesFields = ({ f }: { f: ReturnType<typeof useForm<SeriesForm>> }) => (
-    <div className="grid gap-4 py-4">
-      <FormField control={f.control} name="title" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Título *</FormLabel>
-          <FormControl><Input placeholder="Título de la serie" {...field} /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={f.control} name="description" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Descripción</FormLabel>
-          <FormControl><Textarea placeholder="Descripción breve..." rows={3} {...field} /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={f.control} name="synopsis" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Sinopsis</FormLabel>
-          <FormControl><Textarea placeholder="Sinopsis completa..." rows={4} {...field} /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={f.control} name="year" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Año</FormLabel>
-          <FormControl>
-            <Input type="number" placeholder="2024" {...field}
-              onChange={e => field.onChange(toInt(e.target.value))} />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-    </div>
-  )
 
   return (
     <div className="space-y-6">
