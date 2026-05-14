@@ -675,7 +675,10 @@ export default function UploadPage() {
             } else if (result.status === 'FAILED') {
               updates[item.id] = { status: 'FAILED', error: result.errorMessage ?? 'Error en procesamiento' }
             } else {
-              updates[item.id] = { status: result.status as BulkItemStatus }
+              updates[item.id] = {
+                status: result.status as BulkItemStatus,
+                ...(typeof result.progress === 'number' ? { progress: result.progress } : {}),
+              }
             }
           } catch {
             // transient polling error — retry next cycle

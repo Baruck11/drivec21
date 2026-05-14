@@ -35,7 +35,12 @@ export async function processUpload(uploadId: string): Promise<void> {
     const hlsOutputDir = path.join(env.STORAGE_PATH, 'hls', uploadId)
     fs.mkdirSync(hlsOutputDir, { recursive: true })
 
-    await transcodeToHLS(upload.storagePath, hlsOutputDir, uploadId)
+    await transcodeToHLS(upload.storagePath, hlsOutputDir, uploadId, metadata.duration)
+
+    await prisma.upload.update({
+      where: { id: uploadId },
+      data: { status: 'GENERATING_THUMBNAILS', progress: 99 },
+    })
 
     const thumbnailPath = await generateThumbnail(upload.storagePath, uploadId, metadata.duration)
 
@@ -193,6 +198,7 @@ export function transcodeToHLS(
   inputPath: string,
   outputDir: string,
   uploadId: string,
+  totalDuration: number,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const masterPlaylist = path.join(outputDir, 'master.m3u8')
@@ -228,13 +234,27 @@ export function transcodeToHLS(
 
     const ffmpeg = spawn(env.FFMPEG_PATH, args)
     let errorOutput = ''
+    let lastWrittenPct = 0
 
     ffmpeg.on('error', (err) => reject(new Error(`ffmpeg not found or failed to start: ${err.message}`)))
     ffmpeg.stderr.on('data', (data: Buffer) => {
-      errorOutput += data.toString()
-      const match = data.toString().match(/time=(\d{2}:\d{2}:\d{2})/)
-      if (match) {
-        logger.debug(`[FFmpeg ${uploadId}] ${match[0]}`)
+      const chunk = data.toString()
+      errorOutput += chunk
+
+      if (totalDuration > 0) {
+        const match = chunk.match(/time=(\d{2}):(\d{2}):(\d{2})/)
+        if (match) {
+          const currentSec = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3])
+          const pct = Math.min(98, Math.round((currentSec / totalDuration) * 100))
+          if (pct > lastWrittenPct) {
+            lastWrittenPct = pct
+            prisma.upload.update({
+              where: { id: uploadId },
+              data: { progress: pct },
+            }).catch(() => {})
+          }
+          logger.debug(`[FFmpeg ${uploadId}] ${pct}%`)
+        }
       }
     })
 

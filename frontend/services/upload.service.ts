@@ -138,9 +138,10 @@ export const uploadService = {
 
         try {
           const { data } = await api.get(`/uploads/${uploadId}/status`)
-          const { status, errorMessage } = data.data
+          const { status, progress, errorMessage } = data.data
 
           callbacks.onStatusChange(status)
+          if (typeof progress === 'number') callbacks.onProgress(progress)
 
           if (status === 'COMPLETED') {
             callbacks.onProgress(100)
@@ -167,7 +168,7 @@ export const uploadService = {
     })
   },
 
-  async getUploadStatus(uploadId: string): Promise<{ status: UploadStatus; errorMessage?: string }> {
+  async getUploadStatus(uploadId: string): Promise<{ status: UploadStatus; progress?: number; errorMessage?: string }> {
     const { data } = await api.get(`/uploads/${uploadId}/status`)
     return data.data
   },
