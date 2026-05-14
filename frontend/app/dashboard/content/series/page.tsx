@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { ColumnDef } from '@tanstack/react-table'
-import { MoreHorizontal, Plus, Eye, EyeOff, Pencil, Trash2, Layers, ChevronRight } from 'lucide-react'
+import {
+  MoreHorizontal, Plus, Pencil, Trash2, Layers, ChevronRight,
+  ChevronDown, ChevronUp, Play, Download, Loader2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -11,11 +14,15 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
 import { contentService } from '@/services/content.service'
-import type { Series, Season } from '@/types'
+import { downloadService, toStorageUrl } from '@/services/download.service'
+import { formatDuration } from '@/lib/utils'
+import type { Series, Season, Episode } from '@/types'
 
 import { DataTable } from '@/components/ui/data-table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { MediaPlayer } from '@/components/ui/media-player'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -149,30 +156,238 @@ function SeasonFormFields({ f }: { f: ReturnType<typeof useForm<SeasonForm>> }) 
   )
 }
 
+// ─── Episode title schema ─────────────────────────────────────────────────────
+
+const epTitleSchema = z.object({ title: z.string().min(1, 'Título requerido').max(200) })
+type EpTitleForm = z.infer<typeof epTitleSchema>
+
+// ─── Episode row ──────────────────────────────────────────────────────────────
+
+interface EpisodeRowProps {
+  episode: Episode
+  seriesTitle: string
+  onPlay: (ep: Episode) => void
+  onEdit: (ep: Episode) => void
+  onDelete: (ep: Episode) => void
+}
+
+function EpisodeRow({ episode, seriesTitle, onPlay, onEdit, onDelete }: EpisodeRowProps) {
+  const ready   = episode.uploadStatus === 'COMPLETED'
+  const canPlay = ready && !!(episode.hlsUrl ?? episode.videoUrl)
+  const canDl   = ready && !!episode.videoUrl
+
+  const handleDownload = () => {
+    if (!episode.videoUrl) return
+    downloadService.downloadFile(episode.videoUrl, `${seriesTitle} - ${episode.title}.mp4`)
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors rounded-md">
+      <span className="text-xs font-mono text-muted-foreground w-6 shrink-0 text-right">
+        {String(episode.number).padStart(2, '0')}
+      </span>
+
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm truncate ${!ready ? 'text-muted-foreground' : 'font-medium'}`}>
+          {episode.title}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          {episode.duration && (
+            <span className="text-xs text-muted-foreground">{formatDuration(episode.duration)}</span>
+          )}
+          {!ready && (
+            <Badge variant="outline" className="text-xs h-4 px-1">
+              {episode.uploadStatus === 'FAILED' ? 'Error' : 'Procesando'}
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0"
+          disabled={!canPlay}
+          title="Ver episodio"
+          onClick={() => canPlay && onPlay(episode)}
+        >
+          <Play className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0"
+          disabled={!canDl}
+          title="Descargar episodio"
+          onClick={handleDownload}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0"
+          title="Renombrar episodio"
+          onClick={() => onEdit(episode)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+          title="Eliminar episodio"
+          onClick={() => onDelete(episode)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Season row (expandable with episodes) ────────────────────────────────────
+
+interface SeasonRowProps {
+  season: Season
+  seriesTitle: string
+  onEdit: (s: Season) => void
+  onDelete: (s: Season) => void
+  onPlayEpisode: (ep: Episode) => void
+  onEditEpisode: (ep: Episode) => void
+  onDeleteEpisode: (ep: Episode) => void
+}
+
+function SeasonRow({ season, seriesTitle, onEdit, onDelete, onPlayEpisode, onEditEpisode, onDeleteEpisode }: SeasonRowProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [episodes, setEpisodes] = useState<Episode[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const toggle = async () => {
+    if (!expanded && episodes === null) {
+      setLoading(true)
+      try {
+        const data = await contentService.getEpisodesBySeasonId(season.id)
+        setEpisodes(data)
+      } finally {
+        setLoading(false)
+      }
+    }
+    setExpanded((v) => !v)
+  }
+
+  // Refresh after an episode is deleted
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await contentService.getEpisodesBySeasonId(season.id)
+      setEpisodes(data)
+    } finally {
+      setLoading(false)
+    }
+  }, [season.id])
+
+  // Expose refresh via a custom event so parent can trigger it
+  useEffect(() => {
+    const handler = ((e: CustomEvent) => {
+      if (e.detail === season.id) refresh()
+    }) as EventListener
+    window.addEventListener('episode-changed', handler)
+    return () => window.removeEventListener('episode-changed', handler)
+  }, [season.id, refresh])
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      {/* Season header */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-muted/20 hover:bg-muted/30 transition-colors">
+        <button className="flex items-center gap-2 flex-1 min-w-0 text-left" onClick={toggle}>
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+          ) : expanded ? (
+            <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          )}
+          <span className="text-xs font-mono text-muted-foreground shrink-0">
+            T{String(season.number).padStart(2, '0')}
+          </span>
+          <span className="text-sm font-medium truncate">{season.title}</span>
+          <span className="text-xs text-muted-foreground shrink-0">
+            · {season._count?.episodes ?? 0} ep.{season.year ? ` · ${season.year}` : ''}
+          </span>
+        </button>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(season)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive"
+            onClick={() => onDelete(season)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Episodes */}
+      {expanded && (
+        <div className="divide-y divide-border/50 px-2 py-1">
+          {episodes === null || loading ? (
+            <div className="py-6 flex justify-center">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : episodes.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-5">
+              Esta temporada no tiene episodios todavía.
+            </p>
+          ) : (
+            episodes.map((ep) => (
+              <EpisodeRow
+                key={ep.id}
+                episode={ep}
+                seriesTitle={seriesTitle}
+                onPlay={onPlayEpisode}
+                onEdit={onEditEpisode}
+                onDelete={onDeleteEpisode}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Seasons management dialog ────────────────────────────────────────────────
 
-function SeasonsDialog({
-  series,
-  onClose,
-}: {
-  series: Series
-  onClose: () => void
-}) {
-  const [seasons, setSeasons] = useState<Season[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+function SeasonsDialog({ series, onClose }: { series: Series; onClose: () => void }) {
+  const [seasons, setSeasons]       = useState<Season[]>([])
+  const [isLoading, setIsLoading]   = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [editSeason, setEditSeason] = useState<Season | null>(null)
   const [deleteSeason, setDeleteSeason] = useState<Season | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const createForm = useForm<SeasonForm>({
-    resolver: zodResolver(seasonSchema),
-    defaultValues: { title: '', description: '' },
+  // Episode actions
+  const [player, setPlayer]           = useState<{ title: string; src: string; hlsSrc?: string; poster?: string } | null>(null)
+  const [editEpisode, setEditEpisode] = useState<Episode | null>(null)
+  const [deleteEpisode, setDeleteEpisode] = useState<Episode | null>(null)
+  const [epSubmitting, setEpSubmitting]   = useState(false)
+
+  const epForm = useForm<EpTitleForm>({
+    resolver: zodResolver(epTitleSchema),
+    defaultValues: { title: '' },
   })
-  const editForm = useForm<SeasonForm>({
-    resolver: zodResolver(seasonSchema),
-    defaultValues: { title: '', description: '' },
-  })
+  useEffect(() => {
+    if (editEpisode) epForm.reset({ title: editEpisode.title })
+  }, [editEpisode, epForm])
+
+  const createForm = useForm<SeasonForm>({ resolver: zodResolver(seasonSchema), defaultValues: { title: '', description: '' } })
+  const editForm   = useForm<SeasonForm>({ resolver: zodResolver(seasonSchema), defaultValues: { title: '', description: '' } })
 
   const fetchSeasons = useCallback(async () => {
     setIsLoading(true)
@@ -185,7 +400,6 @@ function SeasonsDialog({
   }, [series.id])
 
   useEffect(() => { fetchSeasons() }, [fetchSeasons])
-
   useEffect(() => {
     if (editSeason) {
       editForm.reset({
@@ -197,6 +411,7 @@ function SeasonsDialog({
     }
   }, [editSeason, editForm])
 
+  // Season handlers
   const handleCreate = async (values: SeasonForm) => {
     setIsSubmitting(true)
     try {
@@ -205,11 +420,8 @@ function SeasonsDialog({
       setCreateOpen(false)
       createForm.reset({ title: '', description: '' })
       fetchSeasons()
-    } catch {
-      toast.error('Error al crear la temporada')
-    } finally {
-      setIsSubmitting(false)
-    }
+    } catch { toast.error('Error al crear la temporada') }
+    finally { setIsSubmitting(false) }
   }
 
   const handleUpdate = async (values: SeasonForm) => {
@@ -220,14 +432,11 @@ function SeasonsDialog({
       toast.success('Temporada actualizada')
       setEditSeason(null)
       fetchSeasons()
-    } catch {
-      toast.error('Error al actualizar la temporada')
-    } finally {
-      setIsSubmitting(false)
-    }
+    } catch { toast.error('Error al actualizar la temporada') }
+    finally { setIsSubmitting(false) }
   }
 
-  const handleDelete = async () => {
+  const handleDeleteSeason = async () => {
     if (!deleteSeason) return
     setIsSubmitting(true)
     try {
@@ -235,69 +444,80 @@ function SeasonsDialog({
       toast.success('Temporada eliminada')
       setDeleteSeason(null)
       fetchSeasons()
-    } catch {
-      toast.error('Error al eliminar la temporada')
-    } finally {
-      setIsSubmitting(false)
-    }
+    } catch { toast.error('Error al eliminar la temporada') }
+    finally { setIsSubmitting(false) }
+  }
+
+  // Episode handlers
+  const handlePlayEpisode = (ep: Episode) => {
+    setPlayer({
+      title: ep.title,
+      src:    toStorageUrl(ep.videoUrl) ?? '',
+      hlsSrc: toStorageUrl(ep.hlsUrl),
+      poster: toStorageUrl(ep.thumbnailUrl) ?? undefined,
+    })
+  }
+
+  const handleEditEpisode = async (values: EpTitleForm) => {
+    if (!editEpisode) return
+    setEpSubmitting(true)
+    try {
+      await contentService.updateEpisode(editEpisode.id, { title: values.title })
+      toast.success('Episodio renombrado')
+      window.dispatchEvent(new CustomEvent('episode-changed', { detail: editEpisode.seasonId }))
+      setEditEpisode(null)
+    } catch { toast.error('Error al renombrar el episodio') }
+    finally { setEpSubmitting(false) }
+  }
+
+  const handleDeleteEpisode = async () => {
+    if (!deleteEpisode) return
+    setEpSubmitting(true)
+    try {
+      await contentService.deleteEpisode(deleteEpisode.id)
+      toast.success('Episodio eliminado')
+      window.dispatchEvent(new CustomEvent('episode-changed', { detail: deleteEpisode.seasonId }))
+      setDeleteEpisode(null)
+    } catch { toast.error('Error al eliminar el episodio') }
+    finally { setEpSubmitting(false) }
   }
 
   return (
     <>
-      {/* Main seasons dialog */}
+      {/* ── Main dialog ── */}
       <Dialog open onOpenChange={(o) => !o && onClose()}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Layers className="h-4 w-4" />
-              Temporadas de {series.title}
+              Temporadas — {series.title}
             </DialogTitle>
             <DialogDescription>
-              Gestiona las temporadas de la serie. Los episodios se añaden desde la sección de Episodios.
+              Expande una temporada para ver y gestionar sus episodios.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-2 max-h-[55vh] overflow-y-auto">
+          <div className="space-y-2 py-2 max-h-[60vh] overflow-y-auto pr-1">
             {isLoading ? (
-              <p className="text-sm text-muted-foreground text-center py-6">Cargando temporadas...</p>
+              Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 rounded-lg" />
+              ))
             ) : seasons.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">
                 Esta serie no tiene temporadas todavía.
               </p>
             ) : (
               seasons.map((s) => (
-                <div
+                <SeasonRow
                   key={s.id}
-                  className="flex items-center justify-between rounded-lg border px-4 py-3"
-                >
-                  <div>
-                    <div className="font-medium text-sm">
-                      T{s.number} — {s.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {s._count?.episodes ?? 0} episodios
-                      {s.year ? ` · ${s.year}` : ''}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setEditSeason(s)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteSeason(s)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+                  season={s}
+                  seriesTitle={series.title}
+                  onEdit={setEditSeason}
+                  onDelete={setDeleteSeason}
+                  onPlayEpisode={handlePlayEpisode}
+                  onEditEpisode={setEditEpisode}
+                  onDeleteEpisode={setDeleteEpisode}
+                />
               ))
             )}
           </div>
@@ -305,14 +525,83 @@ function SeasonsDialog({
           <DialogFooter className="justify-between sm:justify-between">
             <Button variant="outline" onClick={onClose}>Cerrar</Button>
             <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nueva temporada
+              <Plus className="mr-2 h-4 w-4" />Nueva temporada
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Create season */}
+      {/* ── Player ── */}
+      <Dialog open={!!player} onOpenChange={(o) => !o && setPlayer(null)}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="truncate">{player?.title}</DialogTitle>
+          </DialogHeader>
+          {player && (
+            <div className="p-4 pt-2">
+              <MediaPlayer
+                src={player.src}
+                hlsSrc={player.hlsSrc}
+                title={player.title}
+                poster={player.poster}
+                autoPlay
+                className="w-full"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Rename episode ── */}
+      <Dialog open={!!editEpisode} onOpenChange={(o) => !o && setEditEpisode(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Renombrar episodio</DialogTitle>
+            <DialogDescription>
+              Ep. {editEpisode?.number} — nuevo título
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...epForm}>
+            <form onSubmit={epForm.handleSubmit(handleEditEpisode)}>
+              <div className="py-4">
+                <FormField control={epForm.control} name="title" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Título</FormLabel>
+                    <FormControl><Input placeholder="Nuevo título..." {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={() => setEditEpisode(null)}>Cancelar</Button>
+                <Button type="submit" disabled={epSubmitting}>
+                  {epSubmitting ? 'Guardando...' : 'Guardar'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete episode ── */}
+      <Dialog open={!!deleteEpisode} onOpenChange={(o) => !o && setDeleteEpisode(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Eliminar episodio</DialogTitle>
+            <DialogDescription>
+              ¿Eliminar <strong>{deleteEpisode?.title}</strong>? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteEpisode(null)}>Cancelar</Button>
+            <Button variant="destructive" disabled={epSubmitting} onClick={handleDeleteEpisode}>
+              {epSubmitting ? 'Eliminando...' : 'Eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Create season ── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -331,12 +620,12 @@ function SeasonsDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Edit season */}
+      {/* ── Edit season ── */}
       <Dialog open={!!editSeason} onOpenChange={(o) => !o && setEditSeason(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Editar temporada</DialogTitle>
-            <DialogDescription>Modifica T{editSeason?.number} — {editSeason?.title}</DialogDescription>
+            <DialogDescription>T{editSeason?.number} — {editSeason?.title}</DialogDescription>
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(handleUpdate)}>
@@ -350,7 +639,7 @@ function SeasonsDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Delete season */}
+      {/* ── Delete season ── */}
       <Dialog open={!!deleteSeason} onOpenChange={(o) => !o && setDeleteSeason(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -362,7 +651,7 @@ function SeasonsDialog({
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteSeason(null)}>Cancelar</Button>
-            <Button variant="destructive" disabled={isSubmitting} onClick={handleDelete}>
+            <Button variant="destructive" disabled={isSubmitting} onClick={handleDeleteSeason}>
               {isSubmitting ? 'Eliminando...' : 'Eliminar'}
             </Button>
           </DialogFooter>
@@ -375,14 +664,14 @@ function SeasonsDialog({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SeriesPage() {
-  const [series, setSeries] = useState<Series[]>([])
+  const [series, setSeries]       = useState<Series[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [page, setPage] = useState(1)
+  const [page, setPage]           = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
 
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editSeries, setEditSeries] = useState<Series | null>(null)
+  const [createOpen, setCreateOpen]     = useState(false)
+  const [editSeries, setEditSeries]     = useState<Series | null>(null)
   const [deleteSeries, setDeleteSeries] = useState<Series | null>(null)
   const [manageSeries, setManageSeries] = useState<Series | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -429,11 +718,8 @@ export default function SeriesPage() {
       setCreateOpen(false)
       form.reset({ title: '', description: '', synopsis: '' })
       fetchSeries(page)
-    } catch {
-      toast.error('Error al crear la serie')
-    } finally {
-      setIsSubmitting(false)
-    }
+    } catch { toast.error('Error al crear la serie') }
+    finally { setIsSubmitting(false) }
   }
 
   const handleUpdate = async (values: SeriesForm) => {
@@ -444,11 +730,8 @@ export default function SeriesPage() {
       toast.success('Serie actualizada')
       setEditSeries(null)
       fetchSeries(page)
-    } catch {
-      toast.error('Error al actualizar la serie')
-    } finally {
-      setIsSubmitting(false)
-    }
+    } catch { toast.error('Error al actualizar la serie') }
+    finally { setIsSubmitting(false) }
   }
 
   const handleDelete = async () => {
@@ -459,21 +742,8 @@ export default function SeriesPage() {
       toast.success('Serie eliminada')
       setDeleteSeries(null)
       fetchSeries(page)
-    } catch {
-      toast.error('Error al eliminar la serie')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const togglePublish = async (s: Series) => {
-    try {
-      await contentService.publishSeries(s.id, !s.isPublished)
-      toast.success(`Serie ${!s.isPublished ? 'publicada' : 'despublicada'}`)
-      fetchSeries(page)
-    } catch {
-      toast.error('Error al cambiar estado')
-    }
+    } catch { toast.error('Error al eliminar la serie') }
+    finally { setIsSubmitting(false) }
   }
 
   const columns: ColumnDef<Series>[] = [
@@ -518,15 +788,6 @@ export default function SeriesPage() {
       },
     },
     {
-      accessorKey: 'isPublished',
-      header: 'Estado',
-      cell: ({ getValue }) => (
-        <Badge variant={getValue() ? 'success' : 'outline'}>
-          {getValue() ? 'Publicada' : 'Borrador'}
-        </Badge>
-      ),
-    },
-    {
       accessorKey: 'createdAt',
       header: 'Creada',
       cell: ({ getValue }) => (
@@ -555,13 +816,6 @@ export default function SeriesPage() {
               <DropdownMenuItem onClick={() => setEditSeries(s)}>
                 <Pencil className="mr-2 h-4 w-4" />Editar serie
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => togglePublish(s)}>
-                {s.isPublished ? (
-                  <><EyeOff className="mr-2 h-4 w-4" />Despublicar</>
-                ) : (
-                  <><Eye className="mr-2 h-4 w-4" />Publicar</>
-                )}
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive" onClick={() => setDeleteSeries(s)}>
                 <Trash2 className="mr-2 h-4 w-4" />Eliminar
@@ -578,13 +832,10 @@ export default function SeriesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Series</h1>
-          <p className="text-muted-foreground text-sm">
-            Gestiona las series y sus temporadas.
-          </p>
+          <p className="text-muted-foreground text-sm">Gestiona las series y sus temporadas.</p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva serie
+          <Plus className="mr-2 h-4 w-4" />Nueva serie
         </Button>
       </div>
 
@@ -600,7 +851,6 @@ export default function SeriesPage() {
         totalCount={totalCount}
       />
 
-      {/* Seasons management */}
       {manageSeries && (
         <SeasonsDialog
           series={manageSeries}
