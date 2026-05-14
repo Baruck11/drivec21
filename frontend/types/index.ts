@@ -173,6 +173,13 @@ export interface DashboardStats {
   episodes: number
   movies: number
   programs: number
+  uploadStatus?: {
+    total: number
+    completed: number
+    pending: number
+    processing: number
+    failed: number
+  }
 }
 
 export interface UserStats {

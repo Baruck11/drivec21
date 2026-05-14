@@ -1,4 +1,5 @@
 import { prisma } from '../config/database'
+import { UploadStatus } from '@prisma/client'
 import { AppError } from '../middleware/error.middleware'
 import { generateSlug } from '../utils/slug'
 import { buildPaginatedResponse, getPrismaSkipTake, parsePaginationQuery } from '../utils/pagination'
@@ -369,15 +370,48 @@ export class ContentService {
   // ── STATS ─────────────────────────────────────────────────────────────────────
 
   async getDashboardStats() {
-    const [series, seasons, episodes, movies, programs] = await Promise.all([
+    const PROCESSING_STATUSES = [
+      UploadStatus.PROCESSING,
+      UploadStatus.TRANSCODING,
+      UploadStatus.GENERATING_THUMBNAILS,
+    ]
+
+    const [
+      series, seasons, episodes, movies, programs,
+      epDone, epPending, epProc, epFailed,
+      movDone, movPending, movProc, movFailed,
+      progDone, progPending, progProc, progFailed,
+    ] = await Promise.all([
       prisma.series.count(),
       prisma.season.count(),
       prisma.episode.count(),
       prisma.movie.count(),
       prisma.program.count(),
+      prisma.episode.count({ where: { uploadStatus: UploadStatus.COMPLETED } }),
+      prisma.episode.count({ where: { uploadStatus: UploadStatus.PENDING } }),
+      prisma.episode.count({ where: { uploadStatus: { in: PROCESSING_STATUSES } } }),
+      prisma.episode.count({ where: { uploadStatus: UploadStatus.FAILED } }),
+      prisma.movie.count({ where: { uploadStatus: UploadStatus.COMPLETED } }),
+      prisma.movie.count({ where: { uploadStatus: UploadStatus.PENDING } }),
+      prisma.movie.count({ where: { uploadStatus: { in: PROCESSING_STATUSES } } }),
+      prisma.movie.count({ where: { uploadStatus: UploadStatus.FAILED } }),
+      prisma.program.count({ where: { uploadStatus: UploadStatus.COMPLETED } }),
+      prisma.program.count({ where: { uploadStatus: UploadStatus.PENDING } }),
+      prisma.program.count({ where: { uploadStatus: { in: PROCESSING_STATUSES } } }),
+      prisma.program.count({ where: { uploadStatus: UploadStatus.FAILED } }),
     ])
 
-    return { series, seasons, episodes, movies, programs }
+    const total = episodes + movies + programs
+    return {
+      series, seasons, episodes, movies, programs,
+      uploadStatus: {
+        total,
+        completed:  epDone   + movDone   + progDone,
+        pending:    epPending + movPending + progPending,
+        processing: epProc   + movProc   + progProc,
+        failed:     epFailed + movFailed + progFailed,
+      },
+    }
   }
 }
 
