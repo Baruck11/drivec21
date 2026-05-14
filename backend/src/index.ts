@@ -63,7 +63,13 @@ app.use(env.API_PREFIX, limiter)
 // ── Parsing ───────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
-app.use(compression())
+app.use(compression({
+  filter: (req, res) => {
+    // Never compress binary streaming responses (ZIP downloads)
+    if (req.path.includes('/downloads/')) return false
+    return compression.filter(req, res)
+  },
+}))
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 app.use(
