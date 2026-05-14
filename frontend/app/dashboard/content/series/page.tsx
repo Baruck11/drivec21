@@ -490,6 +490,7 @@ function SeriesCard({ series, onEdit, onDelete, onRefresh }: SeriesCardProps) {
                       <FormLabel>Número *</FormLabel>
                       <FormControl>
                         <Input type="number" placeholder="1" {...field}
+                          value={field.value ?? ''}
                           onChange={e => field.onChange(toInt(e.target.value))} />
                       </FormControl>
                       <FormMessage />
@@ -500,6 +501,7 @@ function SeriesCard({ series, onEdit, onDelete, onRefresh }: SeriesCardProps) {
                       <FormLabel>Año</FormLabel>
                       <FormControl>
                         <Input type="number" placeholder="2024" {...field}
+                          value={field.value ?? ''}
                           onChange={e => field.onChange(toInt(e.target.value))} />
                       </FormControl>
                       <FormMessage />
@@ -546,6 +548,7 @@ function SeriesCard({ series, onEdit, onDelete, onRefresh }: SeriesCardProps) {
                       <FormLabel>Número *</FormLabel>
                       <FormControl>
                         <Input type="number" {...field}
+                          value={field.value ?? ''}
                           onChange={e => field.onChange(toInt(e.target.value))} />
                       </FormControl>
                       <FormMessage />
@@ -556,6 +559,7 @@ function SeriesCard({ series, onEdit, onDelete, onRefresh }: SeriesCardProps) {
                       <FormLabel>Año</FormLabel>
                       <FormControl>
                         <Input type="number" {...field}
+                          value={field.value ?? ''}
                           onChange={e => field.onChange(toInt(e.target.value))} />
                       </FormControl>
                       <FormMessage />
@@ -647,6 +651,7 @@ function SeriesFields({ f }: { f: ReturnType<typeof useForm<SeriesForm>> }) {
           <FormLabel>Año</FormLabel>
           <FormControl>
             <Input type="number" placeholder="2024" {...field}
+              value={field.value ?? ''}
               onChange={e => field.onChange(toInt(e.target.value))} />
           </FormControl>
           <FormMessage />
