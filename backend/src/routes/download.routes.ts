@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import path from 'path'
 import fs from 'fs'
-import archiver from 'archiver'
+import archiver = require('archiver')
 import { authenticate } from '../middleware/auth.middleware'
 import { prisma } from '../config/database'
 import { sendError } from '../utils/apiResponse'
@@ -113,7 +113,7 @@ router.post('/zip', async (req: Request, res: Response, next: NextFunction) => {
     // Level 0 = store only (no compression) — video files are already compressed
     const archive = archiver('zip', { zlib: { level: 0 } })
 
-    archive.on('error', (err) => {
+    archive.on('error', (err: Error) => {
       logger.error('ZIP archive error', err)
       if (!res.headersSent) next(err)
     })
