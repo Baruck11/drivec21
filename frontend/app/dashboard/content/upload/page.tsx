@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, type ElementType } from 'react'
 import { useDropzone } from 'react-dropzone'
 import {
   Upload, X, CheckCircle2, AlertCircle, Loader2,
   Film, Tv, Video, Plus, List, ChevronRight,
-  Layers, Play as PlayIcon, Trash2,
+  Layers, Play as PlayIcon, Trash2, Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { uploadService } from '@/services/upload.service'
 import { contentService } from '@/services/content.service'
+import { toStorageUrl } from '@/services/download.service'
 import type { UploadStatus, Series, Season, Episode, Movie, Program } from '@/types'
 
 import { Button } from '@/components/ui/button'
@@ -21,7 +22,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatBytes } from '@/lib/utils'
+import { formatBytes, formatDuration } from '@/lib/utils'
+
+// ── Status maps ───────────────────────────────────────────────────────────────
+
+const PICKER_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Sin archivo', PROCESSING: 'Procesando',
+  TRANSCODING: 'Transcodificando', GENERATING_THUMBNAILS: 'Miniaturas',
+  COMPLETED: 'Listo', FAILED: 'Error',
+}
+const PICKER_STATUS_VARIANT: Record<string, 'outline' | 'secondary' | 'success' | 'destructive'> = {
+  PENDING: 'outline', PROCESSING: 'secondary',
+  TRANSCODING: 'secondary', GENERATING_THUMBNAILS: 'secondary',
+  COMPLETED: 'success', FAILED: 'destructive',
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,7 +88,7 @@ interface BulkQueueItem {
   status: BulkItemStatus
   progress: number
   error?: string
-  uploadSessionId?: string   // set once chunks are fully uploaded; used for background polling
+  uploadSessionId?: string
   abortController?: AbortController
 }
 
@@ -116,7 +130,54 @@ const BULK_STATUS_LABEL: Partial<Record<BulkItemStatus, string>> = {
 
 const ACTIVE_STATUSES = ['PENDING', 'PROCESSING', 'TRANSCODING', 'GENERATING_THUMBNAILS']
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── ContentPickerCard ─────────────────────────────────────────────────────────
+
+interface ContentPickerCardProps {
+  id: string
+  title: string
+  subtitle?: string
+  thumbnailUrl?: string | null
+  uploadStatus: string
+  icon: ElementType<{ className?: string }>
+  selected: boolean
+  onSelect: (id: string) => void
+}
+
+function ContentPickerCard({
+  id, title, subtitle, thumbnailUrl, uploadStatus, icon: Icon, selected, onSelect,
+}: ContentPickerCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(selected ? '' : id)}
+      className={`flex items-center gap-3 w-full rounded-xl border px-4 py-3 text-left transition-colors
+        ${selected
+          ? 'border-primary ring-1 ring-primary bg-primary/5'
+          : 'border-border hover:bg-muted/20'}`}
+    >
+      <div className="h-11 w-20 rounded-lg bg-muted shrink-0 overflow-hidden flex items-center justify-center">
+        {thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={toStorageUrl(thumbnailUrl)} alt={title} className="h-full w-full object-cover" />
+        ) : (
+          <Icon className="h-5 w-5 text-muted-foreground/40" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold truncate">{title}</p>
+        {subtitle && <p className="text-xs text-muted-foreground truncate mt-0.5">{subtitle}</p>}
+        <div className="mt-1">
+          <Badge variant={PICKER_STATUS_VARIANT[uploadStatus] ?? 'outline'} className="text-xs h-4 px-1.5">
+            {PICKER_STATUS_LABEL[uploadStatus] ?? uploadStatus}
+          </Badge>
+        </div>
+      </div>
+      {selected && <CheckCircle2 className="shrink-0 h-5 w-5 text-primary" />}
+    </button>
+  )
+}
+
+// ── Step ──────────────────────────────────────────────────────────────────────
 
 function Step({ n, label, done, active }: { n: number; label: string; done: boolean; active: boolean }) {
   return (
@@ -130,11 +191,10 @@ function Step({ n, label, done, active }: { n: number; label: string; done: bool
   )
 }
 
+// ── SingleQueueCard ───────────────────────────────────────────────────────────
+
 function SingleQueueCard({
-  uploads,
-  onCancel,
-  onRemove,
-  onRetry,
+  uploads, onCancel, onRemove, onRetry,
 }: {
   uploads: UploadItem[]
   onCancel: (item: UploadItem) => void
@@ -202,6 +262,8 @@ function SingleQueueCard({
   )
 }
 
+// ── BulkQueueRow ──────────────────────────────────────────────────────────────
+
 function BulkQueueRow({
   item, episodes, onChange, onRemove, isRunning,
 }: {
@@ -228,7 +290,6 @@ function BulkQueueRow({
         </div>
 
         <div className="flex-1 min-w-0 space-y-3">
-          {/* Filename + status badge */}
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{item.file.name}</p>
@@ -248,10 +309,8 @@ function BulkQueueRow({
             </div>
           </div>
 
-          {/* Config fields — only when ready */}
           {isReady && (
             <div className="flex flex-wrap gap-3 items-end">
-              {/* Title / episode selector */}
               <div className="flex-1 min-w-[160px] space-y-1">
                 <Label className="text-xs text-muted-foreground">
                   {item.episodeMode === 'new' ? 'Título del episodio' : 'Episodio existente'}
@@ -285,7 +344,6 @@ function BulkQueueRow({
                 )}
               </div>
 
-              {/* Episode number (only for new) */}
               {item.episodeMode === 'new' && (
                 <div className="w-20 space-y-1">
                   <Label className="text-xs text-muted-foreground">Ep. #</Label>
@@ -300,7 +358,6 @@ function BulkQueueRow({
                 </div>
               )}
 
-              {/* Mode toggle */}
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Modo</Label>
                 <div className="flex rounded-md border bg-muted p-0.5 gap-0.5">
@@ -321,12 +378,10 @@ function BulkQueueRow({
             </div>
           )}
 
-          {/* Progress */}
           {isActive && <Progress value={item.progress} className="h-1.5" />}
           {isActive && item.progress > 0 && (
             <p className="text-xs text-muted-foreground">{item.progress}%</p>
           )}
-
           {isFailed && item.error && <p className="text-xs text-destructive">{item.error}</p>}
         </div>
       </div>
@@ -334,13 +389,10 @@ function BulkQueueRow({
   )
 }
 
+// ── DropZone ──────────────────────────────────────────────────────────────────
+
 function DropZone({
-  rootProps,
-  inputProps,
-  isDragActive,
-  canDrop,
-  disabledMessage,
-  multiple,
+  rootProps, inputProps, isDragActive, canDrop, disabledMessage, multiple,
 }: {
   rootProps: ReturnType<ReturnType<typeof useDropzone>['getRootProps']>
   inputProps: ReturnType<ReturnType<typeof useDropzone>['getInputProps']>
@@ -405,11 +457,11 @@ export default function UploadPage() {
   const [selectedSeason, setSelectedSeason]     = useState('')
 
   // Single episode mode
-  const [selectedEpisode, setSelectedEpisode]     = useState('')
-  const [episodeMode, setEpisodeMode]             = useState<'existing' | 'new'>('existing')
-  const [newEpisodeTitle, setNewEpisodeTitle]     = useState('')
-  const [newEpisodeNumber, setNewEpisodeNumber]   = useState('')
-  const createdEpisodeIdRef                       = useRef<string | null>(null)
+  const [selectedEpisode, setSelectedEpisode]   = useState('')
+  const [episodeMode, setEpisodeMode]           = useState<'existing' | 'new'>('existing')
+  const [newEpisodeTitle, setNewEpisodeTitle]   = useState('')
+  const [newEpisodeNumber, setNewEpisodeNumber] = useState('')
+  const createdEpisodeIdRef                     = useRef<string | null>(null)
 
   // Bulk episode mode
   const [bulkQueue, setBulkQueue]       = useState<BulkQueueItem[]>([])
@@ -421,7 +473,11 @@ export default function UploadPage() {
   const [selectedMovie, setSelectedMovie]     = useState('')
   const [selectedProgram, setSelectedProgram] = useState('')
 
-  // Shared single-mode upload queue (episodes single, movies, programs)
+  // Search for pickers
+  const [movieSearch, setMovieSearch]     = useState('')
+  const [programSearch, setProgramSearch] = useState('')
+
+  // Shared single-mode upload queue
   const [uploads, setUploads] = useState<UploadItem[]>([])
 
   // ── Load catalogs ────────────────────────────────────────────────────────────
@@ -447,7 +503,15 @@ export default function UploadPage() {
     if (selectedSeason) contentService.getEpisodesBySeasonId(selectedSeason).then(setEpisodes)
   }, [selectedSeason])
 
-  // ── can* flags ───────────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────────
+  const filteredMovies = movieSearch
+    ? movies.filter((m) => m.title.toLowerCase().includes(movieSearch.toLowerCase()))
+    : movies
+
+  const filteredPrograms = programSearch
+    ? programs.filter((p) => p.title.toLowerCase().includes(programSearch.toLowerCase()))
+    : programs
+
   const canUploadSingle =
     uploadTarget === 'episode'
       ? episodeMode === 'existing'
@@ -471,7 +535,7 @@ export default function UploadPage() {
     })
 
   // ── Update helpers ───────────────────────────────────────────────────────────
-  const updateUpload    = useCallback((id: string, patch: Partial<UploadItem>)    =>
+  const updateUpload    = useCallback((id: string, patch: Partial<UploadItem>) =>
     setUploads((p) => p.map((u) => (u.id === id ? { ...u, ...patch } : u))), [])
   const updateBulkItem  = useCallback((id: string, patch: Partial<BulkQueueItem>) =>
     setBulkQueue((p) => p.map((i) => (i.id === id ? { ...i, ...patch } : i))), [])
@@ -536,10 +600,6 @@ export default function UploadPage() {
   )
 
   // ── Bulk upload ──────────────────────────────────────────────────────────────
-  // processBulkItem uploads ALL chunks for one file and marks it TRANSCODING.
-  // It does NOT wait for server-side transcoding — that is handled by a background
-  // polling effect. This lets BULK_CONCURRENCY control chunk-upload parallelism
-  // without blocking the queue on long transcoding jobs.
   const processBulkItem = useCallback(
     async (item: BulkQueueItem) => {
       const controller = new AbortController()
@@ -565,7 +625,6 @@ export default function UploadPage() {
           uploadStatus: 'PENDING',
         } as never)
 
-        // Upload chunks only — do NOT block waiting for transcoding.
         await uploadService.uploadChunksOnly(
           item.file,
           session,
@@ -576,8 +635,6 @@ export default function UploadPage() {
           controller.signal,
         )
 
-        // Chunks sent; assembly + transcoding will run asynchronously on the server.
-        // Store the session ID so the background polling effect can track completion.
         updateBulkItem(item.id, { uploadSessionId: session.uploadId, status: 'TRANSCODING', progress: 100 })
       } catch (err) {
         if ((err as Error).message !== 'Upload cancelled') {
@@ -591,21 +648,14 @@ export default function UploadPage() {
   const startBulkUpload = useCallback(async () => {
     setIsBulkRunning(true)
     const ready = bulkQueue.filter((i) => i.status === 'ready')
-
-    // Upload chunks in batches of BULK_CONCURRENCY. Because processBulkItem no
-    // longer blocks on transcoding, this loop completes quickly once all chunks
-    // are sent — freeing the queue for the next batch.
     for (let i = 0; i < ready.length; i += BULK_CONCURRENCY) {
       await Promise.all(ready.slice(i, i + BULK_CONCURRENCY).map(processBulkItem))
     }
-
     setIsBulkRunning(false)
     toast.info(`${ready.length} episodios enviados — transcodificando en segundo plano`)
   }, [bulkQueue, processBulkItem])
 
-  // ── Background polling for bulk transcoding ───────────────────────────────────
-  // Polls every 8 s for items that are waiting on server-side transcoding.
-  // The effect re-triggers on bulkQueue change (status updates restart the timer).
+  // ── Background polling ───────────────────────────────────────────────────────
   useEffect(() => {
     const transcoding = bulkQueue.filter(
       (i) => i.uploadSessionId && ['PROCESSING', 'TRANSCODING', 'GENERATING_THUMBNAILS'].includes(i.status as string),
@@ -628,12 +678,11 @@ export default function UploadPage() {
               updates[item.id] = { status: result.status as BulkItemStatus }
             }
           } catch {
-            // Ignore transient polling errors — will retry next cycle
+            // transient polling error — retry next cycle
           }
         }),
       )
 
-      // Apply all status updates in one render pass
       if (Object.keys(updates).length > 0) {
         setBulkQueue((prev) =>
           prev.map((i) => (updates[i.id] ? { ...i, ...updates[i.id] } : i)),
@@ -672,7 +721,7 @@ export default function UploadPage() {
     setBulkQueue((p) => [...p, ...items])
   }, [canDropBulk, episodes, bulkQueue])
 
-  // ── Dropzones (separate hooks — each tab has its own) ────────────────────────
+  // ── Dropzones ────────────────────────────────────────────────────────────────
   const epSingle  = useDropzone({ onDrop: onDropSingle, accept: ACCEPT, maxSize: MAX_SIZE })
   const bulkDrop  = useDropzone({ onDrop: onDropBulk,  accept: ACCEPT, maxSize: MAX_SIZE, multiple: true })
   const movieDrop = useDropzone({ onDrop: onDropSingle, accept: ACCEPT, maxSize: MAX_SIZE })
@@ -687,7 +736,7 @@ export default function UploadPage() {
     startUpload(fresh)
   }
 
-  // ── Step state (episode single) ──────────────────────────────────────────────
+  // ── Step state ───────────────────────────────────────────────────────────────
   const step1Done   = selectedSeries !== ''
   const step2Done   = selectedSeason !== ''
   const step3Active = step2Done
@@ -699,7 +748,7 @@ export default function UploadPage() {
   const bulkActive = bulkQueue.filter((i) => ACTIVE_STATUSES.includes(i.status as string)).length
   const bulkReady  = bulkQueue.filter((i) => i.status === 'ready').length
 
-  // ── Shared location card (episode tab) ──────────────────────────────────────
+  // ── Location card (episode tab) ──────────────────────────────────────────────
   const LocationCard = (
     <Card>
       <CardHeader className="pb-3">
@@ -756,8 +805,6 @@ export default function UploadPage() {
 
         {/* ══ EPISODE TAB ══ */}
         <TabsContent value="episode" className="mt-4 space-y-4">
-
-          {/* Single / Bulk toggle */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex rounded-lg border bg-muted p-1 gap-1">
               <button type="button"
@@ -780,7 +827,6 @@ export default function UploadPage() {
             )}
           </div>
 
-          {/* Shared location */}
           {LocationCard}
 
           {/* ── Single mode ── */}
@@ -961,21 +1007,43 @@ export default function UploadPage() {
         {/* ══ MOVIE TAB ══ */}
         <TabsContent value="movie" className="mt-4 space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Película destino</CardTitle>
-              <CardDescription>Selecciona la película a la que se vinculará el archivo</CardDescription>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Seleccionar película</CardTitle>
+              <CardDescription>Haz clic en la película a la que se vinculará el archivo de video</CardDescription>
             </CardHeader>
-            <CardContent className="max-w-xs space-y-2">
-              <Label>Película</Label>
-              <Select value={selectedMovie} onValueChange={setSelectedMovie}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar película..." /></SelectTrigger>
-                <SelectContent>
-                  {movies.length === 0 && <SelectItem value="__e" disabled>No hay películas</SelectItem>}
-                  {movies.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.title}{m.uploadStatus === 'COMPLETED' ? ' ✓' : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <CardContent className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar película..."
+                  className="pl-9"
+                  value={movieSearch}
+                  onChange={(e) => setMovieSearch(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {movies.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-10">No hay películas. Crea una primero.</p>
+                ) : filteredMovies.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-10">Sin resultados para esa búsqueda</p>
+                ) : filteredMovies.map((m) => (
+                  <ContentPickerCard
+                    key={m.id}
+                    id={m.id}
+                    title={m.title}
+                    subtitle={[
+                      m.director ? `Dir. ${m.director}` : '',
+                      m.year ? String(m.year) : '',
+                      m.duration ? formatDuration(m.duration) : '',
+                    ].filter(Boolean).join(' · ')}
+                    thumbnailUrl={m.thumbnailUrl}
+                    uploadStatus={m.uploadStatus}
+                    icon={Film}
+                    selected={selectedMovie === m.id}
+                    onSelect={setSelectedMovie}
+                  />
+                ))}
+              </div>
             </CardContent>
           </Card>
           <Card>
@@ -995,21 +1063,42 @@ export default function UploadPage() {
         {/* ══ PROGRAM TAB ══ */}
         <TabsContent value="program" className="mt-4 space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Programa destino</CardTitle>
-              <CardDescription>Selecciona el programa al que se vinculará el archivo</CardDescription>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Seleccionar programa</CardTitle>
+              <CardDescription>Haz clic en el programa al que se vinculará el archivo de video</CardDescription>
             </CardHeader>
-            <CardContent className="max-w-xs space-y-2">
-              <Label>Programa</Label>
-              <Select value={selectedProgram} onValueChange={setSelectedProgram}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar programa..." /></SelectTrigger>
-                <SelectContent>
-                  {programs.length === 0 && <SelectItem value="__e" disabled>No hay programas</SelectItem>}
-                  {programs.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.title}{p.uploadStatus === 'COMPLETED' ? ' ✓' : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <CardContent className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar programa..."
+                  className="pl-9"
+                  value={programSearch}
+                  onChange={(e) => setProgramSearch(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {programs.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-10">No hay programas. Crea uno primero.</p>
+                ) : filteredPrograms.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-10">Sin resultados para esa búsqueda</p>
+                ) : filteredPrograms.map((p) => (
+                  <ContentPickerCard
+                    key={p.id}
+                    id={p.id}
+                    title={p.title}
+                    subtitle={[
+                      p.category ?? '',
+                      p.duration ? formatDuration(p.duration) : '',
+                    ].filter(Boolean).join(' · ')}
+                    thumbnailUrl={p.thumbnailUrl}
+                    uploadStatus={p.uploadStatus}
+                    icon={Video}
+                    selected={selectedProgram === p.id}
+                    onSelect={setSelectedProgram}
+                  />
+                ))}
+              </div>
             </CardContent>
           </Card>
           <Card>
