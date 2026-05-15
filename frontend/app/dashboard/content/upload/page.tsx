@@ -237,7 +237,11 @@ function SingleQueueCard({
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium truncate">{item.file.name}</p>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={config.color as never} className="text-xs">{config.label}</Badge>
+                    <Badge variant={config.color as never} className="text-xs">
+                      {isActive && item.status !== 'PENDING'
+                        ? `${config.label} · ${item.progress}%`
+                        : config.label}
+                    </Badge>
                     <Button variant="ghost" size="icon" className="h-7 w-7"
                       onClick={() => isActive ? onCancel(item) : onRemove(item.id)}>
                       <X className="h-3.5 w-3.5" />
@@ -246,7 +250,7 @@ function SingleQueueCard({
                 </div>
                 <div className="flex gap-3 text-xs text-muted-foreground">
                   <span>{formatBytes(item.file.size)}</span>
-                  {item.progress > 0 && item.status !== 'COMPLETED' && <span>{item.progress}%</span>}
+                  {item.status === 'PENDING' && item.progress > 0 && <span>{item.progress}%</span>}
                 </div>
                 {isActive && <Progress value={item.progress} className="h-1.5" />}
                 {item.error && <p className="text-xs text-destructive">{item.error}</p>}
@@ -299,6 +303,7 @@ function BulkQueueRow({
               <span className={`text-xs font-medium
                 ${isDone ? 'text-emerald-500' : isFailed ? 'text-destructive' : isActive ? 'text-primary' : 'text-muted-foreground'}`}>
                 {BULK_STATUS_LABEL[item.status] ?? item.status}
+                {isActive && item.status !== 'PENDING' && ` · ${item.progress}%`}
               </span>
               {isReady && !isRunning && (
                 <button type="button" onClick={() => onRemove(item.id)}
@@ -379,9 +384,6 @@ function BulkQueueRow({
           )}
 
           {isActive && <Progress value={item.progress} className="h-1.5" />}
-          {isActive && item.progress > 0 && (
-            <p className="text-xs text-muted-foreground">{item.progress}%</p>
-          )}
           {isFailed && item.error && <p className="text-xs text-destructive">{item.error}</p>}
         </div>
       </div>
@@ -637,7 +639,13 @@ export default function UploadPage() {
 
         updateBulkItem(item.id, { uploadSessionId: session.uploadId, status: 'TRANSCODING', progress: 100 })
       } catch (err) {
-        if ((err as Error).message !== 'Upload cancelled') {
+        const axiosErr = err as { response?: { status: number } }
+        if (axiosErr.response?.status === 409) {
+          updateBulkItem(item.id, {
+            status: 'FAILED',
+            error: `El episodio #${Number(item.episodeNumber)} ya existe en esta temporada`,
+          })
+        } else if ((err as Error).message !== 'Upload cancelled') {
           updateBulkItem(item.id, { status: 'FAILED', error: (err as Error).message })
         }
       }

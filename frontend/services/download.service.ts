@@ -15,15 +15,22 @@ export function toStorageUrl(dbPath: string | null | undefined): string | undefi
 }
 
 export const downloadService = {
-  downloadFile(videoUrl: string, filename: string) {
+  async downloadFile(videoUrl: string, filename: string): Promise<void> {
     const href = toStorageUrl(videoUrl)
     if (!href) return
+    // Fetch as blob so the browser creates a same-origin object URL;
+    // <a download> is silently ignored on cross-origin URLs in Chrome.
+    const response = await fetch(href)
+    if (!response.ok) throw new Error(`Download failed: ${response.status}`)
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = href
+    link.href = objectUrl
     link.download = filename
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 15_000)
   },
 
   async downloadZip(type: 'season' | 'series', id: string, suggestedName?: string): Promise<void> {

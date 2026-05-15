@@ -33,13 +33,20 @@ interface EpisodeRowProps {
   episode: BroadcasterEpisode
   canDownload: boolean
   onPlay: (ep: BroadcasterEpisode) => void
-  onDownload: (ep: BroadcasterEpisode) => void
+  onDownload: (ep: BroadcasterEpisode) => Promise<void>
 }
 
 function EpisodeRow({ episode, canDownload, onPlay, onDownload }: EpisodeRowProps) {
+  const [downloading, setDownloading] = useState(false)
   const ready = episode.uploadStatus === 'COMPLETED'
   const canPlay = ready && !!(episode.hlsUrl ?? episode.videoUrl)
   const canDl   = canDownload && ready && !!episode.videoUrl
+
+  const handleDownload = async () => {
+    setDownloading(true)
+    try { await onDownload(episode) }
+    finally { setDownloading(false) }
+  }
 
   return (
     <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-muted/50 transition-colors">
@@ -84,11 +91,14 @@ function EpisodeRow({ episode, canDownload, onPlay, onDownload }: EpisodeRowProp
             size="sm"
             variant="outline"
             className="h-7 gap-1.5 text-xs"
-            onClick={() => onDownload(episode)}
+            onClick={handleDownload}
+            disabled={downloading}
             title="Descargar episodio"
           >
-            <Download className="h-3 w-3" />
-            Bajar
+            {downloading
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <Download className="h-3 w-3" />}
+            {downloading ? 'Bajando…' : 'Bajar'}
           </Button>
         )}
       </div>
@@ -103,7 +113,7 @@ interface SeasonPanelProps {
   seriesId: string
   canDownload: boolean
   onPlay: (ep: BroadcasterEpisode) => void
-  onDownloadEpisode: (ep: BroadcasterEpisode) => void
+  onDownloadEpisode: (ep: BroadcasterEpisode) => Promise<void>
 }
 
 function SeasonPanel({ season, canDownload, onPlay, onDownloadEpisode }: SeasonPanelProps) {
@@ -208,10 +218,16 @@ function SeriesCard({ perm, onPlay }: SeriesCardProps) {
     }
   }
 
-  const handleDownloadEpisode = (ep: BroadcasterEpisode) => {
+  const handleDownloadEpisode = async (ep: BroadcasterEpisode) => {
     if (!ep.videoUrl) return
-    downloadService.downloadFile(ep.videoUrl, `${String(ep.number).padStart(2, '0')}. ${ep.title}`)
-    toast.info(`Descargando ${ep.title}…`)
+    const ext = ep.videoUrl.match(/\.[^/.]+$/)?.[0] ?? ''
+    const filename = `${String(ep.number).padStart(2, '0')}. ${ep.title}${ext}`
+    try {
+      await downloadService.downloadFile(ep.videoUrl, filename)
+      toast.success(`${ep.title} descargado`)
+    } catch {
+      toast.error(`Error al descargar ${ep.title}`)
+    }
   }
 
   const defaultSeason = series.seasons[0]?.id ?? ''
@@ -468,10 +484,15 @@ export default function ViewerDashboard() {
     })
   }
 
-  const handleDownloadMedia = (videoUrl: string | null, title: string) => {
+  const handleDownloadMedia = async (videoUrl: string | null, title: string) => {
     if (!videoUrl) return
-    downloadService.downloadFile(videoUrl, title)
-    toast.info(`Descargando ${title}…`)
+    const ext = videoUrl.match(/\.[^/.]+$/)?.[0] ?? ''
+    try {
+      await downloadService.downloadFile(videoUrl, `${title}${ext}`)
+      toast.success(`${title} descargado`)
+    } catch {
+      toast.error(`Error al descargar ${title}`)
+    }
   }
 
   const isEmpty = totalCount === 0
