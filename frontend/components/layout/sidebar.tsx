@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import {
   Play,
@@ -104,14 +105,8 @@ export function AppSidebar() {
   return (
     <aside className="flex h-full w-[240px] flex-col border-r bg-sidebar">
       {/* Brand */}
-      <div className="flex h-16 items-center gap-3 border-b px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <Play className="h-4 w-4 fill-primary-foreground text-primary-foreground" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold leading-none">Capital 21 Play</p>
-          <p className="truncate text-xs text-muted-foreground">Medios Públicos CDMX</p>
-        </div>
+      <div className="flex h-16 items-center border-b px-4">
+        <Image src="/logc211.png" alt="Capital 21 Play" width={60} height={40} className="object-contain" priority />
       </div>
 
       {/* Nav */}

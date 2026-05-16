@@ -12,7 +12,9 @@ import { toast } from 'sonner'
 import { uploadService } from '@/services/upload.service'
 import { contentService } from '@/services/content.service'
 import { toStorageUrl } from '@/services/download.service'
-import type { UploadStatus, Series, Season, Episode, Movie, Program } from '@/types'
+import { useUploadStore } from '@/store/upload.store'
+import type { Series, Season, Episode, Movie, Program } from '@/types'
+import type { UploadItem, BulkQueueItem, BulkItemStatus } from '@/store/upload.store'
 
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -62,34 +64,6 @@ function extractEpisodeNumber(filename: string): number | null {
 function nextEpisodeNumber(existing: Episode[], queueLen: number, fileIndex: number): number {
   const max = existing.length > 0 ? Math.max(...existing.map((e) => e.number)) : 0
   return max + queueLen + fileIndex + 1
-}
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface UploadItem {
-  id: string
-  file: File
-  progress: number
-  status: UploadStatus | 'QUEUED' | 'CANCELLED'
-  error?: string
-  uploadId?: string
-  abortController?: AbortController
-}
-
-type BulkItemStatus = 'ready' | UploadStatus | 'QUEUED' | 'CANCELLED'
-
-interface BulkQueueItem {
-  id: string
-  file: File
-  episodeMode: 'existing' | 'new'
-  episodeTitle: string
-  episodeNumber: number | ''
-  selectedEpisodeId: string
-  status: BulkItemStatus
-  progress: number
-  error?: string
-  uploadSessionId?: string
-  abortController?: AbortController
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -465,9 +439,13 @@ export default function UploadPage() {
   const [newEpisodeNumber, setNewEpisodeNumber] = useState('')
   const createdEpisodeIdRef                     = useRef<string | null>(null)
 
-  // Bulk episode mode
-  const [bulkQueue, setBulkQueue]       = useState<BulkQueueItem[]>([])
-  const [isBulkRunning, setIsBulkRunning] = useState(false)
+  // Bulk episode mode and single uploads — state in global store so uploads persist across navigation
+  const {
+    uploads, bulkQueue, isBulkRunning,
+    updateUpload, updateBulkItem, removeBulkItem,
+    addUploads, addBulkItems, setBulkQueue, setIsBulkRunning,
+    removeUpload,
+  } = useUploadStore()
 
   // Movie / program
   const [movies, setMovies]                   = useState<Movie[]>([])
@@ -478,9 +456,6 @@ export default function UploadPage() {
   // Search for pickers
   const [movieSearch, setMovieSearch]     = useState('')
   const [programSearch, setProgramSearch] = useState('')
-
-  // Shared single-mode upload queue
-  const [uploads, setUploads] = useState<UploadItem[]>([])
 
   // ── Load catalogs ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -494,15 +469,20 @@ export default function UploadPage() {
     setSelectedEpisode('')
     setSeasons([])
     setEpisodes([])
-    setBulkQueue([])
-    if (selectedSeries) contentService.getSeasonsBySeriesId(selectedSeries).then(setSeasons)
+    if (selectedSeries) {
+      // Only wipe 'ready' items — keep anything actively uploading or already done
+      setBulkQueue((prev) => prev.filter((i) => ACTIVE_STATUSES.includes(i.status as string)))
+      contentService.getSeasonsBySeriesId(selectedSeries).then(setSeasons)
+    }
   }, [selectedSeries])
 
   useEffect(() => {
     setSelectedEpisode('')
     setEpisodes([])
-    setBulkQueue([])
-    if (selectedSeason) contentService.getEpisodesBySeasonId(selectedSeason).then(setEpisodes)
+    if (selectedSeason) {
+      setBulkQueue((prev) => prev.filter((i) => ACTIVE_STATUSES.includes(i.status as string)))
+      contentService.getEpisodesBySeasonId(selectedSeason).then(setEpisodes)
+    }
   }, [selectedSeason])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
@@ -535,14 +515,6 @@ export default function UploadPage() {
         ? i.episodeTitle.trim() !== '' && i.episodeNumber !== ''
         : i.selectedEpisodeId !== ''
     })
-
-  // ── Update helpers ───────────────────────────────────────────────────────────
-  const updateUpload    = useCallback((id: string, patch: Partial<UploadItem>) =>
-    setUploads((p) => p.map((u) => (u.id === id ? { ...u, ...patch } : u))), [])
-  const updateBulkItem  = useCallback((id: string, patch: Partial<BulkQueueItem>) =>
-    setBulkQueue((p) => p.map((i) => (i.id === id ? { ...i, ...patch } : i))), [])
-  const removeBulkItem  = useCallback((id: string) =>
-    setBulkQueue((p) => p.filter((i) => i.id !== id)), [])
 
   // ── Single upload ────────────────────────────────────────────────────────────
   const startUpload = useCallback(
@@ -663,47 +635,6 @@ export default function UploadPage() {
     toast.info(`${ready.length} episodios enviados — transcodificando en segundo plano`)
   }, [bulkQueue, processBulkItem])
 
-  // ── Background polling ───────────────────────────────────────────────────────
-  useEffect(() => {
-    const transcoding = bulkQueue.filter(
-      (i) => i.uploadSessionId && ['PROCESSING', 'TRANSCODING', 'GENERATING_THUMBNAILS'].includes(i.status as string),
-    )
-    if (transcoding.length === 0) return
-
-    const timer = setTimeout(async () => {
-      const updates: Record<string, Partial<BulkQueueItem>> = {}
-
-      await Promise.all(
-        transcoding.map(async (item) => {
-          try {
-            const result = await uploadService.getUploadStatus(item.uploadSessionId!)
-            if (result.status === 'COMPLETED') {
-              updates[item.id] = { status: 'COMPLETED', progress: 100 }
-              toast.success(`Episodio listo: ${item.file.name}`)
-            } else if (result.status === 'FAILED') {
-              updates[item.id] = { status: 'FAILED', error: result.errorMessage ?? 'Error en procesamiento' }
-            } else {
-              updates[item.id] = {
-                status: result.status as BulkItemStatus,
-                ...(typeof result.progress === 'number' ? { progress: result.progress } : {}),
-              }
-            }
-          } catch {
-            // transient polling error — retry next cycle
-          }
-        }),
-      )
-
-      if (Object.keys(updates).length > 0) {
-        setBulkQueue((prev) =>
-          prev.map((i) => (updates[i.id] ? { ...i, ...updates[i.id] } : i)),
-        )
-      }
-    }, 8000)
-
-    return () => clearTimeout(timer)
-  }, [bulkQueue])
-
   // ── Dropzone handlers ────────────────────────────────────────────────────────
   const onDropSingle = useCallback((files: File[]) => {
     if (!canUploadSingle) { toast.error('Completa la configuración del destino'); return }
@@ -712,9 +643,9 @@ export default function UploadPage() {
       id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
       file, progress: 0, status: 'QUEUED',
     }))
-    setUploads((p) => [...p, ...items])
+    addUploads(items)
     items.reduce((chain, item) => chain.then(() => startUpload(item)), Promise.resolve())
-  }, [startUpload, canUploadSingle])
+  }, [startUpload, canUploadSingle, addUploads])
 
   const onDropBulk = useCallback((files: File[]) => {
     if (!canDropBulk) { toast.error('Selecciona una temporada primero'); return }
@@ -729,8 +660,8 @@ export default function UploadPage() {
       status: 'ready',
       progress: 0,
     }))
-    setBulkQueue((p) => [...p, ...items])
-  }, [canDropBulk, episodes, bulkQueue])
+    addBulkItems(items)
+  }, [canDropBulk, episodes, bulkQueue, addBulkItems])
 
   // ── Dropzones ────────────────────────────────────────────────────────────────
   const epSingle  = useDropzone({ onDrop: onDropSingle, accept: ACCEPT, maxSize: MAX_SIZE })
@@ -740,7 +671,6 @@ export default function UploadPage() {
 
   // ── Single queue helpers ─────────────────────────────────────────────────────
   const cancelUpload = (item: UploadItem) => { item.abortController?.abort(); updateUpload(item.id, { status: 'CANCELLED' }) }
-  const removeUpload = (id: string)        => setUploads((p) => p.filter((u) => u.id !== id))
   const retryUpload  = (item: UploadItem)  => {
     const fresh = { ...item, progress: 0, status: 'QUEUED' as const, error: undefined }
     updateUpload(item.id, fresh)
@@ -806,7 +736,7 @@ export default function UploadPage() {
         setUploadTarget(v as typeof uploadTarget)
         setSelectedEpisode(''); setSelectedMovie(''); setSelectedProgram('')
         setEpisodeMode('existing'); setNewEpisodeTitle(''); setNewEpisodeNumber('')
-        setBulkQueue([])
+        setBulkQueue((prev) => prev.filter((i) => ACTIVE_STATUSES.includes(i.status as string)))
       }}>
         <TabsList>
           <TabsTrigger value="episode" className="gap-2"><Tv className="h-4 w-4" /> Episodio</TabsTrigger>

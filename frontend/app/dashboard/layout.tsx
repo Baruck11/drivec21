@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/auth.store'
 import { AppSidebar } from '@/components/layout/sidebar'
 import { Topbar } from '@/components/layout/topbar'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { UploadIndicator } from '@/components/layout/upload-indicator'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { PageLoading } from '@/components/ui/loading'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Mobile sidebar */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="p-0 w-[240px]">
+          <SheetTitle className="sr-only">Menú de navegación</SheetTitle>
           <AppSidebar />
         </SheetContent>
       </Sheet>
@@ -50,6 +52,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </main>
       </div>
+
+      {/* Persistent background upload indicator */}
+      <UploadIndicator />
     </div>
   )
 }

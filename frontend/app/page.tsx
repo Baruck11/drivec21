@@ -78,10 +78,10 @@ export default function HomePage() {
             {/* Logo */}
             <div className="flex items-center gap-3">
               <Image
-                src="/logc21.png"
+                src="/logc211.png"
                 alt="Capital 21"
-                width={120}
-                height={36}
+                width={160}
+                height={40}
                 className="h-8 w-auto object-contain"
                 priority
               />
