@@ -13,6 +13,7 @@ export interface MediaMetadata {
   bitrate: number
   fps: number
   fileSize: number
+  hasAudio: boolean
 }
 
 export async function processUpload(uploadId: string): Promise<void> {
@@ -35,7 +36,7 @@ export async function processUpload(uploadId: string): Promise<void> {
     const hlsOutputDir = path.join(env.STORAGE_PATH, 'hls', uploadId)
     fs.mkdirSync(hlsOutputDir, { recursive: true })
 
-    await transcodeToHLS(upload.storagePath, hlsOutputDir, uploadId, metadata.duration)
+    await transcodeToHLS(upload.storagePath, hlsOutputDir, uploadId, metadata.duration, metadata.hasAudio)
 
     await prisma.upload.update({
       where: { id: uploadId },
@@ -174,6 +175,7 @@ export function extractMetadata(filePath: string): Promise<MediaMetadata> {
       try {
         const info = JSON.parse(output)
         const videoStream = info.streams?.find((s: Record<string, unknown>) => s.codec_type === 'video')
+        const audioStream = info.streams?.find((s: Record<string, unknown>) => s.codec_type === 'audio')
         const format = info.format
 
         const [fpsNum, fpsDen] = (videoStream?.r_frame_rate ?? '24/1').split('/').map(Number)
@@ -186,6 +188,7 @@ export function extractMetadata(filePath: string): Promise<MediaMetadata> {
           bitrate: Math.round(parseInt(format?.bit_rate ?? '0', 10) / 1000),
           fps: Math.round(fpsNum / fpsDen),
           fileSize: parseInt(format?.size ?? '0', 10),
+          hasAudio: !!audioStream,
         })
       } catch (parseErr) {
         reject(new Error(`Failed to parse ffprobe output: ${parseErr}`))
@@ -199,27 +202,37 @@ export function transcodeToHLS(
   outputDir: string,
   uploadId: string,
   totalDuration: number,
+  hasAudio: boolean,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const masterPlaylist = path.join(outputDir, 'master.m3u8')
+
+    // When the file has no audio stream, omit all audio map/codec args and
+    // remove audio from the var_stream_map so FFmpeg doesn't error on a:0.
+    const a = hasAudio
+      ? { map: ['-map', 'a:0'], c0: ['-c:a:0', 'aac', '-b:a:0', '128k'],
+          c1: ['-c:a:1', 'aac', '-b:a:1', '128k'], c2: ['-c:a:2', 'aac', '-b:a:2', '96k'],
+          streamMap: 'v:0,a:0,name:1080p v:1,a:1,name:720p v:2,a:2,name:480p' }
+      : { map: [], c0: [], c1: [], c2: [],
+          streamMap: 'v:0,name:1080p v:1,name:720p v:2,name:480p' }
 
     // Multi-bitrate HLS ladder
     const args = [
       '-i', inputPath,
       '-filter_complex',
-      '[v:0]split=3[v1][v2][v3];[v1]scale=1920:1080[v1out];[v2]scale=1280:720[v2out];[v3]scale=854:480[v3out]',
+      '[v:0]split=3[v1][v2][v3];[v1]scale=1920:1080,format=yuv420p[v1out];[v2]scale=1280:720,format=yuv420p[v2out];[v3]scale=854:480,format=yuv420p[v3out]',
       // 1080p
-      '-map', '[v1out]', '-map', 'a:0',
+      '-map', '[v1out]', ...a.map,
       '-c:v:0', 'libx264', '-crf', '23', '-preset', 'fast', '-profile:v', 'high',
-      '-c:a:0', 'aac', '-b:a:0', '128k',
+      ...a.c0,
       // 720p
-      '-map', '[v2out]', '-map', 'a:0',
+      '-map', '[v2out]', ...a.map,
       '-c:v:1', 'libx264', '-crf', '25', '-preset', 'fast', '-profile:v', 'main',
-      '-c:a:1', 'aac', '-b:a:1', '128k',
+      ...a.c1,
       // 480p
-      '-map', '[v3out]', '-map', 'a:0',
+      '-map', '[v3out]', ...a.map,
       '-c:v:2', 'libx264', '-crf', '28', '-preset', 'fast', '-profile:v', 'baseline',
-      '-c:a:2', 'aac', '-b:a:2', '96k',
+      ...a.c2,
       // HLS output
       '-f', 'hls',
       '-hls_time', String(env.HLS_SEGMENT_DURATION),
@@ -228,7 +241,7 @@ export function transcodeToHLS(
       '-hls_segment_type', 'mpegts',
       '-hls_segment_filename', path.join(outputDir, 'stream_%v/seg_%03d.ts'),
       '-master_pl_name', 'master.m3u8',
-      '-var_stream_map', 'v:0,a:0,name:1080p v:1,a:1,name:720p v:2,a:2,name:480p',
+      '-var_stream_map', a.streamMap,
       path.join(outputDir, 'stream_%v/index.m3u8'),
     ]
 
